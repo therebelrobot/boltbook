@@ -13,3 +13,6 @@ dist/
 data/
 *.sqlite
 *.sqlite3
+
+# Local compose overrides hold real hostnames and ports.
+compose.override.yaml

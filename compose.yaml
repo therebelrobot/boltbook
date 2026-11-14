@@ -1,0 +1,36 @@
+# boltbook — one container, one volume.
+#
+# The proxy in front terminates TLS; this publishes the port on loopback only,
+# so nothing on the LAN reaches it directly. Hostnames here read example.com by
+# convention — put your own in a local override.
+services:
+  boltbook:
+    build: .
+    image: ghcr.io/therebelrobot/boltbook:local
+    restart: unless-stopped
+
+    ports:
+      - '127.0.0.1:8080:8080'
+
+    environment:
+      # Behind a reverse proxy, so the client IP comes from X-Forwarded-For.
+      BOLTBOOK_TRUST_PROXY: 'true'
+      # Must match the public URL exactly: state-changing requests check Origin.
+      BOLTBOOK_PUBLIC_ORIGIN: 'https://boltbook.example.com'
+      # Uncomment once, claim the instance in the browser, then remove it.
+      # BOLTBOOK_SETUP_TOKEN: 'pick-something'
+
+    volumes:
+      # Everything lives here: the database. Back this up.
+      - ./data:/data
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/api/status').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

@@ -367,7 +367,7 @@ land at M5.
 | M5 | Client | React + Vite, mobile-first: shell, access, stash with camera-first photos, patterns, projects with allocation, search, settings, units — **done** |
 | M5b | Tags + views editor | tag store, routes, filters and tag search; the pattern views/requirements editor in the client — **done** |
 | M6 | Export + backup | zip export from the API and Settings, `npm run backup` — **done** |
-| M7 | Ship | Dockerfile (multi-stage), compose, reverse proxy notes, deploy |
+| M7 | Ship | Dockerfile (multi-stage), compose, CI + GHCR publish workflows, deployment notes — **done** |
 
 Auth (M4) could land before M1's later parts; the plan keeps it early enough that nothing ships
 unauthenticated.

@@ -63,6 +63,25 @@ names back. See `docs/technical-design.md` §5.
 
 ## Run it
 
+**Docker (the intended way):**
+
+```sh
+git clone https://github.com/therebelrobot/boltbook.git
+cd boltbook
+cp compose.yaml compose.override.yaml     # your hostname, port and setup token
+docker compose up -d
+docker compose logs boltbook              # prints the setup token on first start
+```
+
+Or, without Compose:
+
+```sh
+npm run docker:build
+npm run docker:run
+```
+
+**From source:**
+
 ```sh
 npm install
 npm run build
@@ -70,16 +89,19 @@ BOLTBOOK_SETUP_TOKEN=pick-something npm start   # prints the token, then claim i
 ```
 
 The server serves the built client and the API on one port. Without `BOLTBOOK_SETUP_TOKEN` it
-generates one and prints it; the token is only used to claim the instance the first time. To try
-it with demo data:
+generates one and prints it; the token is only used to claim the instance the first time.
+
+To try it with demo data:
 
 ```sh
 BOLTBOOK_URL=http://127.0.0.1:8080 BOLTBOOK_SETUP_TOKEN=<token> \
 BOLTBOOK_PASSPHRASE='at least twelve characters' node --import tsx scripts/seed-demo.ts
 ```
 
-Configuration is environment-only: `BOLTBOOK_DATA_DIR`, `BOLTBOOK_DB`, `BOLTBOOK_PORT`,
-`BOLTBOOK_HOST`, `BOLTBOOK_COOKIE_SECURE`, `BOLTBOOK_TRUST_PROXY`, `BOLTBOOK_PUBLIC_ORIGIN`,
+Configuration is environment-only; every variable is in
+[`docs/deployment.md`](docs/deployment.md), along with the reverse-proxy shape, backups and
+upgrades. The short version: `BOLTBOOK_DATA_DIR`, `BOLTBOOK_DB`, `BOLTBOOK_PORT`, `BOLTBOOK_HOST`,
+`BOLTBOOK_COOKIE_SECURE`, `BOLTBOOK_TRUST_PROXY`, `BOLTBOOK_PUBLIC_ORIGIN`,
 `BOLTBOOK_SESSION_IDLE_MINUTES`, `BOLTBOOK_SESSION_MAX_HOURS`, `BOLTBOOK_SETUP_TOKEN`.
 
 **Lost the passphrase?** There is no recovery code — nothing is encrypted, so there is no key to
@@ -95,20 +117,24 @@ then claim the instance again with the setup token.
 
 ## Status
 
-**M1–M5 landed.** The backend and the client are both real:
+**v1 complete — M1–M7.** The backend, the client, and shipping are all real:
 
 - **Server** — fabrics (with photos), patterns with views and requirements, notions, thread and
-  tools, projects with allocation and the shortfall rule, and FTS5 search across all four indexed
-  entities. Single-user auth in the house model: a setup token claims the instance, then a
-  passphrase with optional TOTP, `__Host-` sessions, rate limiting and an audit log.
+  tools, tags, projects with allocation and the shortfall rule, FTS5 search across the four
+  indexed entities (plus a pass over the tags), single-user auth in the house model, an audit log,
+  and a one-zip export.
 - **Client** — React + Vite, mobile-first: bottom navigation, camera-first fabric capture with
   client-side downscale and EXIF stripping, drag-to-dismiss sheets, delete with undo, the yardage
   meter, tags, the pattern views/requirements editor, and a per-device metric/imperial choice.
   All verified in a real browser (the screenshots above).
+- **Ship** — a multi-stage Docker image with no `node_modules` in the runtime layer, `compose.yaml`,
+  CI that typechecks/builds/tests and builds both architectures, and a GHCR publish workflow with
+  provenance and an SBOM. The image was built and run: it serves the client, claims, persists to a
+  volume, reports healthy, and survives a restart.
 
-110 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
+115 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
 
-**Not yet:** docker image and deployment notes (M7). See `docs/technical-design.md` §11.
+**Not yet:** restoring an export (the export is one-way for now). See `docs/technical-design.md` §11.
 
 ## Docs
 
@@ -117,6 +143,7 @@ then claim the instance again with the setup token.
 | `docs/product-brief.md` | why this exists, the scope, v1 vs v2 |
 | `docs/technical-design.md` | modules, the data model, the seams, the plan |
 | `docs/design-brief.md` | how the client looks, moves and feels |
+| `docs/deployment.md` | running it, the environment, proxies, backups, upgrades |
 | `docs/adr/0001-no-encryption-at-rest.md` | the decision, and what it costs |
 
 ## License

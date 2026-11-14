@@ -18,7 +18,10 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "backup": "node --import tsx scripts/backup.ts",
-    "reset-passphrase": "node --import tsx scripts/reset-passphrase.ts"
+    "reset-passphrase": "node --import tsx scripts/reset-passphrase.ts",
+    "docker:build": "docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/therebelrobot/boltbook:local .",
+    "docker:run": "docker run --rm -p 8080:8080 -e BOLTBOOK_HOST=0.0.0.0 -e BOLTBOOK_COOKIE_SECURE=false -v \"$(pwd)/data:/data\" ghcr.io/therebelrobot/boltbook:local",
+    "docker:push": "docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/therebelrobot/boltbook:latest --push ."
   },
   "dependencies": {
     "@hono/node-server": "2.1.8",
