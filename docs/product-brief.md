@@ -110,7 +110,9 @@ Fabric and patterns are both first-class from day one, linked.
 - One container behind a reverse proxy with an edge access layer; hostname and port are
   deployment configuration and stay out of the repo.
 - Local storage; export/backup of everything in one file.
-- Works on the phone at the shelf and on the desktop at the machine.
+- **Mobile-first.** Designed for the phone held at the shelf — camera capture for fabric
+  photos, bottom navigation, targets sized for a thumb — with the desktop as the second
+  target, not the first.
 
 ### In, v2
 
@@ -188,6 +190,9 @@ Given/When/Then. UAT judges against these.
   requirement and notions are shown separately.
 - **Given** a project linking a pattern view to a fabric, **when** the fabric is short of the
   view's requirement, **then** the shortfall is named in metres before the project starts.
+- **Given** a phone at the shelf with the app open, **when** a fabric photo is taken in-app,
+  **then** it uploads without leaving the page — downscaled and with location data stripped —
+  and appears on the fabric's record.
 
 ### v1 — the search
 

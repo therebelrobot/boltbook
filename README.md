@@ -27,9 +27,9 @@ machine, without the account or the cloud.
 
 ## Status
 
-**Scaffold.** The repository exists and the scope above is the intent. The data model, the
-stack below the wireframe and the UI are not designed yet — they get decided next, in a
-product brief and a technical design under `docs/`, before any code.
+**Designed, not built.** The product brief (`docs/product-brief.md`), the technical design
+(`docs/technical-design.md`) and ADR 0001 (no encryption at rest) are written. No code yet —
+M1, the store, is next per the design's delivery plan. The client is mobile-first.
 
 ## License
 

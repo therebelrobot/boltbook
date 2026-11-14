@@ -1,0 +1,308 @@
+# boltbook — Technical Design
+
+**Document version:** 1.0 · **Last updated:** 2026-11-14
+**Companion:** `product-brief.md`, `adr/0001-no-encryption-at-rest.md`
+**Status:** proposed — nothing below is built yet.
+
+---
+
+## 1. Shape
+
+One container, one process, one port. The Hono server serves the API under `/api/*` and the
+built React client (a static allow-list, no directory traversal) for everything else. There is
+no second service and no database server.
+
+```
+browser ── TLS ──▶ reverse proxy ──▶ boltbook container
+                                        ├─ Hono app  (/api/*)
+                                        ├─ static client
+                                        └─ data/  (boltbook.db, photos sidecar-free: photos are rows)
+```
+
+This mirrors `resonate` and `reframe` exactly, minus the vault: no envelope encryption, so no
+data key and no locked/unlocked split in the read path (see ADR 0001).
+
+### Mobile-first
+
+The primary device is the phone held at the shelf, mid-project; the desktop is the second
+target. That is a constraint on the client, not a later polish pass:
+
+- **Bottom navigation** across the top-level places (Stash, Patterns, Projects, Search), with
+  Settings reachable from the header — one-handed reach, nothing critical in the top corners.
+- **Touch-first**: targets ≥ 44 px, spacing that survives a thumb, and no hover-only or
+  right-click affordances. Every action has a tap path.
+- **Camera capture** for fabric photos (`<input type="file" accept="image/*"
+  capture="environment">`), downscaled client-side before upload (§7).
+- **Viewport correctness**: `dvh` not `vh`; safe-area insets for the notch; input `font-size`
+  ≥ 16 px so iOS does not zoom on focus; deliberate `touch-action` and tap-highlight.
+- **Installable**: web manifest, `apple-mobile-web-app-capable`, icon — it sits on the home
+  screen, like `reframe`.
+- **Fast on a phone**: lists paginate or virtualize, and the §6 filter path must meet the brief's
+  one-second bar on a mid-range phone, not only on the machine.
+
+## 2. Modules
+
+```
+server/
+  main.ts          process entry: config, database, static assets, serve
+  config.ts        environment → ServerConfig (validated, defaults)
+  database.ts      node:sqlite handle, pragmas, migrations
+  schemas.ts       zod schemas for every request body
+  app.ts           Hono app: middleware, guards, routes, error mapping
+  auth.ts          setup / login / logout / passphrase / TOTP
+  sessions.ts      in-memory SessionStore (random token; SHA-256 kept)
+  rateLimiter.ts   unlock attempts, per IP
+  repositories/
+    fabrics.ts  patterns.ts  notions.ts  projects.ts  tags.ts  audit.ts
+  shortfall.ts     the allocation maths (pure, no I/O)
+  export.ts        build the zip (json + photos)
+  staticAssets.ts  read dist/client into an allow-list at startup
+client/
+  main.tsx  App.tsx  router.ts  api.ts  styles.css
+  screens/   Stash, FabricEditor, Patterns, PatternEditor, Notions,
+             Projects, ProjectEditor, Search, Settings, Access
+  components/
+shared/
+  model.ts         types shared by server and client (the wire contract)
+  units.ts         mm ↔ display, cost ↔ display
+test/
+```
+
+The split is the house split: `server/` never imports `client/`; both import `shared/`.
+
+## 3. Data model
+
+Plaintext SQLite via `node:sqlite` (`DatabaseSync`), WAL, `foreign_keys = ON`. Migrations are
+an ordered `string[]` keyed off `PRAGMA user_version`, run in a transaction — the same
+mechanism as `reframe/server/database.ts`.
+
+Conventions: ids are random UUIDv4 text; lengths are **integer millimetres**; money is
+`cost_minor INTEGER` + `currency TEXT`; dates are ISO-8601 text; timestamps are ISO-8601 UTC.
+
+```
+fabric(id PK, name, fibre, weight, colour, print_type, width_mm,
+       length_mm, original_length_mm, source, cost_minor, currency,
+       acquired_on, location, care, notes, created_at, updated_at)
+
+fabric_photo(id PK, fabric_id FK→fabric ON DELETE CASCADE, position,
+             content_type, bytes BLOB, width_px, height_px)
+
+pattern(id PK, brand, number, name, format, size_min, size_max, difficulty,
+        category, source, year, tried_and_true INTEGER, link_url, notes,
+        created_at, updated_at)
+
+pattern_view(id PK, pattern_id FK→pattern ON DELETE CASCADE, label,
+             description, position)
+
+pattern_requirement(id PK, pattern_view_id FK→pattern_view ON DELETE CASCADE,
+                    role, fabric_width_mm, length_mm, note)
+                    -- role: main | lining | interfacing | other
+
+notion(id PK, name, kind, colour, spec, quantity REAL, unit, location,
+       notes, created_at, updated_at)
+       -- kind: thread | button | zipper | interfacing | elastic | trim | other
+
+project(id PK, title, pattern_view_id FK→pattern_view NULL, status,
+        started_on, finished_on, notes, created_at, updated_at)
+        -- status: planned | cutting | sewing | done | abandoned
+
+project_fabric(project_id FK, fabric_id FK, length_mm_used INTEGER,
+               PRIMARY KEY(project_id, fabric_id))
+
+project_notion(project_id FK, notion_id FK, quantity_used REAL,
+               PRIMARY KEY(project_id, notion_id))
+
+tag(id PK, name UNIQUE)
+tag_link(tag_id FK, entity_type, entity_id, PRIMARY KEY(tag_id, entity_type, entity_id))
+         -- entity_type: fabric | pattern | project
+
+account(singleton_id PK CHECK(=1), created_at, scrypt_n, scrypt_r, scrypt_p,
+        passphrase_salt BLOB, passphrase_hash BLOB,
+        totp_secret TEXT NULL, totp_last_accepted_counter INTEGER,
+        recovery_salt BLOB, recovery_hash BLOB)
+
+audit_log(id INTEGER PK AUTOINCREMENT, at, event, ip_address, user_agent)
+```
+
+`length_mm` on `fabric` is **remaining**; `original_length_mm` is what was bought.
+`project_fabric.length_mm_used` is the record of what each project took.
+
+Indexes: `fabric(fibre)`, `fabric(location)`, `pattern(brand)`, `project(status)`,
+`pattern_view(pattern_id)`, plus the FTS tables in §6.
+
+## 4. Identity, auth, access
+
+Single user. The house auth model, minus the vault:
+
+- **Claim.** `POST /api/setup` succeeds once. It is refused while an `account` row exists. It
+  requires `setupToken` to equal `config.setupToken` (`BOLTBOOK_SETUP_TOKEN`; generated from
+  `randomBytes` and printed to the log once if unset — never returned over the wire).
+- **Sign-in.** `POST /api/login` with passphrase (12+ chars) and, if enrolled, a TOTP code.
+  Passphrase verified against a scrypt hash (params stored on the `account` row, so they can be
+  raised later without a migration). TOTP is RFC 6238, replay-protected by
+  `totp_last_accepted_counter`.
+- **Session.** `__Host-boltbook_session` when `cookieSecure`, else `boltbook_session`:
+  `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`. The cookie carries a 256-bit random token;
+  only its SHA-256 lives in the in-memory `SessionStore`, so a heap dump is not replayable.
+  Idle timeout and absolute max, both from config.
+- **State-changing guard.** Every non-GET `/api/*` request must carry `x-boltbook-request: 1`
+  and, if `Origin` is present, it must equal the configured public origin. A browser cannot send
+  that header cross-site without a preflight the server never grants.
+- **Rate limit.** Failed unlocks per IP, with `Retry-After`.
+- **Lost passphrase.** No recovery code (there is no key to recover). The documented reset is a
+  maintenance action: stop the container, clear the `account` passphrase/TOTP columns, restart,
+  re-claim with the setup token. Data is untouched.
+
+Global hardening headers (CSP, `X-Frame-Options: DENY`, `no-referrer`, HSTS when secure,
+`X-Robots-Tag: noindex`) are set on every response, as in `reframe`.
+
+## 5. API surface
+
+```
+GET    /api/status                    { claimed, signedIn, totpEnabled, idleMinutes }
+POST   /api/setup        { setupToken, passphrase }
+POST   /api/login        { passphrase, totpCode? }
+POST   /api/logout
+POST   /api/passphrase   { currentPassphrase, newPassphrase }
+POST   /api/totp/begin | /api/totp/confirm | /api/totp/disable
+
+GET    /api/fabrics                   list + filters (?fibre=&minLengthMm=&location=&tag=)
+POST   /api/fabrics
+GET    /api/fabrics/:id
+PUT    /api/fabrics/:id
+DELETE /api/fabrics/:id
+POST   /api/fabrics/:id/photos        multipart, one photo
+DELETE /api/fabrics/:id/photos/:photoId
+GET    /api/fabrics/:id/photos/:photoId   raw bytes, immutable cache
+
+GET/POST        /api/patterns
+GET/PUT/DELETE  /api/patterns/:id
+POST/PUT/DELETE /api/patterns/:id/views[/:viewId]
+POST/PUT/DELETE /api/patterns/:id/views/:viewId/requirements[/:reqId]
+
+GET/POST        /api/notions
+GET/PUT/DELETE  /api/notions/:id
+
+GET/POST        /api/projects
+GET/PUT/DELETE  /api/projects/:id
+PUT             /api/projects/:id/allocations   { fabrics[], notions[] }
+
+GET/POST        /api/tags
+GET    /api/search?q=
+GET    /api/export                    application/zip
+GET    /api/audit
+```
+
+Errors are `{ error, message }` with a stable `error` code; validation errors add `issues`.
+
+## 6. Search
+
+SQLite **FTS5**, if the bundled SQLite in Node 26 provides it (verification task, M1). Two
+external-content indexes over the source tables, kept current by triggers:
+
+- `fabric_fts(name, fibre, colour, print_type, location, notes, tags)`
+- `pattern_fts(brand, number, name, category, notes, tags)`
+
+`GET /api/search?q=` runs a ranked `MATCH` across both and returns a merged list of hits with
+the entity type, a title, the best snippet, and — for fabric — remaining `length_mm`.
+If FTS5 is unavailable, the fallback is per-column `LIKE` scans with a documented ranking; the
+contract of the endpoint does not change.
+
+## 7. Photos and files
+
+Photos are **rows**, not files, so the whole record is one file to copy.
+
+- The client downscales to ≤ 2000 px on the long edge and re-encodes JPEG q≈0.8 before upload,
+  and strips EXIF/GPS. Cap the multipart body at 8 MB (the `/api/*` guard, higher than
+  `reframe`'s 256 KB).
+- Served back by id with a long `immutable` cache; the id is the cache key, so a replaced photo
+  gets a new id and never serves stale bytes.
+- Attached **pattern PDFs are links, not uploads** (v1): the row stores a URL or a path on the
+  box. Owning pattern binaries is a v2 question.
+
+## 8. Allocation and shortfall
+
+The one piece of real domain logic, kept pure in `server/shortfall.ts` so it is tested without
+a database.
+
+For a project linked to a pattern view:
+
+1. `required` = the view's `pattern_requirement` rows. Each names a `role`, a fabric
+   `fabric_width_mm`, and a `length_mm`.
+2. For a chosen fabric, the *usable* amount is `fabric.length_mm` (remaining) **minus** what
+   other active projects (status `planned | cutting | sewing`) have reserved on the same bolt.
+3. **Shortfall** = `max(0, required.length_mm − usable)`, reported in millimetres with a
+   display conversion. **Too narrow** if `fabric.width_mm < required.fabric_width_mm`, reported
+   as a warning rather than a shortfall, because a garment can be pieced.
+4. On a project reaching **done**, `fabric.length_mm` is decremented by the sum of its
+   `project_fabric` usage, and the reservation stops counting.
+
+The rule the UI must honour: a fabric can be allocated to a project without being consumed, and
+"what is left" always means *remaining minus reserved*.
+
+## 9. Export and backup
+
+- `GET /api/export` streams a zip: `boltbook.json` (every table, photos as base64) plus
+  `photos/<id>.jpg`. Recorded in the audit log, as in `reframe`.
+- Backup is a file copy: `data/boltbook.db` (checkpoint WAL first). Because there is no
+  encryption, the copy is readable with `sqlite3` — a deliberate property (ADR 0001).
+
+## 10. Dependency register
+
+Every third-party package needs a row here before it lands (repo `AGENTS.md`). Starting point is
+the set already proven in `resonate`/`reframe`; exact pins, no floating majors.
+
+| Package | Pin | Licence | Why |
+|---|---|---|---|
+| `hono` | 4.13.13 | MIT | HTTP router, middleware |
+| `@hono/node-server` | 2.1.3 | MIT | Node adapter, `getConnInfo` |
+| `zod` | 4.6.5 | MIT | Request validation → typed handlers |
+| `react` / `react-dom` | 19.3.0 | MIT | Client |
+| `vite` | 8.3.2 | MIT | Client build/dev |
+| `@vitejs/plugin-react` | 6.1.2 | MIT | JSX transform |
+| `esbuild` | 0.28.2 | MIT | Server bundle |
+| `tsx` | 4.23.15 | MIT | Dev watch, test loader |
+| `typescript` | 7.0.2 | Apache-2.0 | Typecheck |
+| `@types/node` | ^26 | MIT | Node 26 types |
+
+`node:sqlite` is built into Node 26 — no dependency, no native build. Per the standing
+directive, the **EOL and CVE check runs at M1** across this list before any of it is installed;
+Node itself is 26 LTS (verified 2026-11-14). All licences above are compatible with Unlicense.
+
+## 11. Delivery plan
+
+| # | Milestone | Done when |
+|---|---|---|
+| M0 | Scaffold | repo, brief, ADR, this doc — **done** |
+| M1 | Store | migrations, repositories, fabrics CRUD API, FTS5 verdict, dep EOL/CVE check |
+| M2 | Patterns + notions | patterns with views and requirements; notions inventory; CRUD APIs |
+| M3 | Projects | projects, allocation, `shortfall.ts` with unit tests |
+| M4 | Auth | setup/login/logout/passphrase/TOTP, sessions, rate limit, guards |
+| M5 | Client | Stash, Patterns, Notions, Projects, Search, Settings, Access screens |
+| M6 | Export + audit | zip export, audit log, backup doc |
+| M7 | Ship | Dockerfile (multi-stage), compose, reverse proxy notes, deploy |
+
+Auth (M4) could land before M1's later parts; the plan keeps it early enough that nothing ships
+unauthenticated.
+
+## 12. Verification
+
+- **Unit (`node --import tsx --test test/*.test.ts`):** `shortfall.ts` (short, exact, reserved,
+  too-narrow, done-decrements), migration runner (idempotent, versioned), auth (wrong passphrase,
+  wrong setup token, replay-protected TOTP, session expiry), search query building.
+- **Integration:** each API route with an in-memory database (`:memory:`), asserting status and
+  body shape from `shared/model.ts`.
+- **Lossless record:** create a fabric with a photo, read it back, byte-compare the photo.
+- **Instance:** a fresh `:memory:` app prints one setup token; `POST /api/setup` twice fails the
+  second time; an unauthenticated `/api/*` read is refused with no data.
+- **Perf:** a 100+ fabric stash filters under a second (brief §7).
+
+## 13. Open decisions
+
+- **FTS5 availability** in Node 26's bundled SQLite — decides §6's build versus fallback.
+- **Photos as rows** (BLOB) versus files on disk — leaning rows for one-file backup; confirmed
+  only if typical photos keep the DB reasonable.
+- **Pattern PDFs**: link-only in v1 (as above) or store the file.
+- **Pattern source**: free-text, or a curated list of houses (Simplicity, McCall's, …)?
+- **Notions in v1** — the brief lists them; if they add too much to M2 they can slip without
+  weakening fabric + patterns + projects.

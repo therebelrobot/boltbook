@@ -14,14 +14,21 @@ pattern piece or drafting a garment, it belongs in the other project.
 | `docs/technical-design.md` | Modules, the data model, the seams, delivery plan |
 | `docs/adr/` | Decisions that are hard to reverse |
 
-None exist yet — this is a scaffold. Write the brief before the code.
+`docs/product-brief.md` and `docs/technical-design.md` are written, and `docs/adr/` holds the
+decisions. The brief leads; when the design and the brief disagree, the brief wins and the
+design is corrected.
 
 ## Conventions
 
 TypeScript strict, Node 26 (LTS, exact pin in `.nvmrc`). Import paths carry no extension.
-npm. Unlicense. Hostnames in every file read `example.com` or `<docker-host>`. Nothing in CI
+npm. Unlicense. Hostnames in every file read `example.com` or `<docker-host>`; no real
+hostname, service port, or provider name goes in this repo — it is public. Nothing in CI
 pushes commits, tags, or releases. New third-party packages get a row in the dependency
 register in `docs/technical-design.md` and must clear the licence gate.
+
+**Mobile-first.** The primary device is the phone at the shelf; the desktop is the second
+target. Design the client narrow first, with touch targets, bottom navigation, and camera
+capture for photos. A layout that only works wide is not done.
 
 ## Where the work is
 
