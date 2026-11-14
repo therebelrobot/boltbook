@@ -111,10 +111,10 @@ async function main(): Promise<void> {
   }
 
   const fabrics: Array<[Record<string, unknown>, [number, number, number] | null]> = [
-    [{ name: 'Washed linen', fibre: 'linen', weight: 'mid', colour: 'oatmeal', lengthMm: 2500, widthMm: 1400, originalLengthMm: 3000, location: 'Bin A', care: 'wash cold' }, [214, 205, 186]],
-    [{ name: 'Indigo chambray', fibre: 'cotton', colour: 'indigo', lengthMm: 1800, widthMm: 1150, originalLengthMm: 2000, location: 'Bin A', notes: 'lightweight for a shirt' }, [58, 74, 104]],
-    [{ name: 'Wool coating', fibre: 'wool', colour: 'camel', lengthMm: 1600, widthMm: 1500, originalLengthMm: 1800, location: 'Chest', care: 'dry clean' }, [178, 140, 96]],
-    [{ name: 'Silk habotai', fibre: 'silk', colour: 'pearl', lengthMm: 900, widthMm: 1140, location: 'Drawer 2' }, [232, 226, 219]],
+    [{ name: 'Washed linen', fibre: 'linen', weight: 'mid', colour: 'oatmeal', lengthMm: 2500, widthMm: 1400, originalLengthMm: 3000, location: 'Bin A', care: 'wash cold', tags: ['linen', 'summer'] }, [214, 205, 186]],
+    [{ name: 'Indigo chambray', fibre: 'cotton', colour: 'indigo', lengthMm: 1800, widthMm: 1150, originalLengthMm: 2000, location: 'Bin A', notes: 'lightweight for a shirt', tags: ['cotton', 'shirt'] }, [58, 74, 104]],
+    [{ name: 'Wool coating', fibre: 'wool', colour: 'camel', lengthMm: 1600, widthMm: 1500, originalLengthMm: 1800, location: 'Chest', care: 'dry clean', tags: ['wool', 'winter'] }, [178, 140, 96]],
+    [{ name: 'Silk habotai', fibre: 'silk', colour: 'pearl', lengthMm: 900, widthMm: 1140, location: 'Drawer 2', tags: ['silk', 'lining'] }, [232, 226, 219]],
   ]
 
   const fabricIds: string[] = []
@@ -126,39 +126,39 @@ async function main(): Promise<void> {
   console.log(`${fabricIds.length} fabrics`)
 
   const threads = await Promise.all([
-    call<{ id: string }>('/api/threads', 'POST', { name: 'Mara 120', brand: 'Gütermann', colour: 'ecru', colourCode: '169', fibre: 'polyester', weight: '120', spools: 3, lengthM: 900, originalLengthM: 1000, needleSize: '80/12', location: 'Thread box' }),
-    call<{ id: string }>('/api/threads', 'POST', { name: 'Mara 120', brand: 'Gütermann', colour: 'navy', colourCode: '361', fibre: 'polyester', weight: '120', spools: 2, lengthM: 200, originalLengthM: 1000, location: 'Thread box' }),
-    call<{ id: string }>('/api/threads', 'POST', { name: 'Silk 50', brand: 'Gütermann', colour: 'cream', fibre: 'silk', lengthM: 100, location: 'Thread box' }),
+    call<{ id: string }>('/api/threads', 'POST', { name: 'Mara 120', brand: 'Gütermann', colour: 'ecru', colourCode: '169', fibre: 'polyester', weight: '120', spools: 3, lengthM: 900, originalLengthM: 1000, needleSize: '80/12', location: 'Thread box', tags: ['shirt'] }),
+    call<{ id: string }>('/api/threads', 'POST', { name: 'Mara 120', brand: 'Gütermann', colour: 'navy', colourCode: '361', fibre: 'polyester', weight: '120', spools: 2, lengthM: 200, originalLengthM: 1000, location: 'Thread box', tags: ['jeans'] }),
+    call<{ id: string }>('/api/threads', 'POST', { name: 'Silk 50', brand: 'Gütermann', colour: 'cream', fibre: 'silk', lengthM: 100, location: 'Thread box', tags: ['silk'] }),
   ])
 
   const notions = await Promise.all([
-    call<{ id: string }>('/api/notions', 'POST', { name: 'Metal zip 20 cm', kind: 'zipper', colour: 'brass', quantity: 5, unit: 'piece', location: 'Notions tin' }),
-    call<{ id: string }>('/api/notions', 'POST', { name: 'Corozo buttons 15 mm', kind: 'button', colour: 'cream', quantity: 24, unit: 'piece' }),
+    call<{ id: string }>('/api/notions', 'POST', { name: 'Metal zip 20 cm', kind: 'zipper', colour: 'brass', quantity: 5, unit: 'piece', location: 'Notions tin', tags: ['jeans'] }),
+    call<{ id: string }>('/api/notions', 'POST', { name: 'Corozo buttons 15 mm', kind: 'button', colour: 'cream', quantity: 24, unit: 'piece', tags: ['shirt'] }),
     call<{ id: string }>('/api/notions', 'POST', { name: 'Tricot interfacing', kind: 'interfacing', colour: 'white', quantity: 2, unit: 'm' }),
   ])
 
   await Promise.all([
-    call('/api/tools', 'POST', { name: 'Rotary cutter', category: 'cutting', brand: 'Olfa', spec: '45 mm', quantity: 1, location: 'Cutting table', needsAttention: true }),
+    call('/api/tools', 'POST', { name: 'Rotary cutter', category: 'cutting', brand: 'Olfa', spec: '45 mm', quantity: 1, location: 'Cutting table', needsAttention: true, tags: ['sharp'] }),
     call('/api/tools', 'POST', { name: 'Quilting ruler', category: 'measuring', brand: 'Omnigrid', spec: '6 × 24 in', quantity: 1, location: 'Cutting table' }),
-    call('/api/tools', 'POST', { name: "Tailor's shears", category: 'cutting', brand: 'Fiskars', quantity: 1, needsAttention: true }),
+    call('/api/tools', 'POST', { name: "Tailor's shears", category: 'cutting', brand: 'Fiskars', quantity: 1, needsAttention: true, tags: ['sharp'] }),
   ])
 
-  const archer = await call<{ id: string }>('/api/patterns', 'POST', { name: 'Archer Button-Up', brand: 'Grainline', number: '1001', format: 'pdf', category: 'tops', sizeMin: '0', sizeMax: '18', difficulty: 'intermediate', triedAndTrue: true })
-  await call('/api/patterns', 'POST', { name: 'Ginger Jeans', brand: 'Closet Core', format: 'envelope', category: 'bottoms', sizeMin: '0', sizeMax: '20' })
-  await call('/api/patterns', 'POST', { name: 'Hinterland Dress', brand: 'Sew Liberated', format: 'pdf', category: 'dresses', difficulty: 'beginner' })
+  const archer = await call<{ id: string }>('/api/patterns', 'POST', { name: 'Archer Button-Up', brand: 'Grainline', number: '1001', format: 'pdf', category: 'tops', sizeMin: '0', sizeMax: '18', difficulty: 'intermediate', triedAndTrue: true, tags: ['shirt', 'tried-and-true'] })
+  await call('/api/patterns', 'POST', { name: 'Ginger Jeans', brand: 'Closet Core', format: 'envelope', category: 'bottoms', sizeMin: '0', sizeMax: '20', tags: ['jeans'] })
+  await call('/api/patterns', 'POST', { name: 'Hinterland Dress', brand: 'Sew Liberated', format: 'pdf', category: 'dresses', difficulty: 'beginner', tags: ['dress'] })
 
   const view = await call<{ id: string }>(`/api/patterns/${archer.id}/views`, 'POST', { label: 'A', description: 'button-up, long sleeve' })
   await call(`/api/patterns/${archer.id}/views/${view.id}/requirements`, 'POST', { role: 'main', lengthMm: 1800, fabricWidthMm: 1400, note: 'with nap, see chart' })
   await call(`/api/patterns/${archer.id}/views/${view.id}/requirements`, 'POST', { role: 'interfacing', lengthMm: 400, fabricWidthMm: 900 })
 
-  const shirt = await call<{ id: string }>('/api/projects', 'POST', { title: 'Archer shirt in linen', status: 'cutting', startedOn: '2026-11-10' })
+  const shirt = await call<{ id: string }>('/api/projects', 'POST', { title: 'Archer shirt in linen', status: 'cutting', startedOn: '2026-11-10', tags: ['shirt', 'summer'] })
   await call(`/api/projects/${shirt.id}/allocations`, 'PUT', {
     fabrics: [{ fabricId: fabricIds[0], lengthMmUsed: 2800 }],
     threads: [{ threadId: threads[0]!.id, lengthMUsed: 400 }],
     notions: [{ notionId: notions[1]!.id, quantityUsed: 12 }],
   })
 
-  const chambray = await call<{ id: string }>('/api/projects', 'POST', { title: 'Chambray Archer, second go', status: 'planned', patternViewId: view.id })
+  const chambray = await call<{ id: string }>('/api/projects', 'POST', { title: 'Chambray Archer, second go', status: 'planned', patternViewId: view.id, tags: ['shirt'] })
   await call(`/api/projects/${chambray.id}/allocations`, 'PUT', {
     fabrics: [{ fabricId: fabricIds[1], lengthMmUsed: 1500 }],
     threads: [{ threadId: threads[1]!.id, lengthMUsed: 300 }],

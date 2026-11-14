@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
+import { TagsRepository } from './tags'
 import { computeShortfalls, keyOf, type AllocationClaim } from '../shortfall'
 import type {
   FabricAllocation,
@@ -25,7 +26,7 @@ const nullableText = (value: unknown): string | null => (value === null || value
 const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
 const placeholders = (count: number): string => new Array(count).fill('?').join(', ')
 
-function toProject(row: Row, allocations: ProjectAllocations): Project {
+function toProject(row: Row, allocations: ProjectAllocations, tags: string[]): Project {
   return {
     id: String(row.id),
     title: String(row.title),
@@ -36,6 +37,7 @@ function toProject(row: Row, allocations: ProjectAllocations): Project {
     finishedOn: nullableText(row.finished_on),
     notes: nullableText(row.notes),
     allocations,
+    tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }
@@ -44,7 +46,11 @@ function toProject(row: Row, allocations: ProjectAllocations): Project {
 const emptyAllocations = (): ProjectAllocations => ({ fabrics: [], threads: [], notions: [] })
 
 export class ProjectRepository {
-  constructor(private readonly database: Database) {}
+  private readonly tags: TagsRepository
+
+  constructor(private readonly database: Database) {
+    this.tags = new TagsRepository(database)
+  }
 
   count(): number {
     const row = this.database.prepare('SELECT COUNT(*) AS n FROM project').get() as Row
@@ -89,18 +95,27 @@ export class ProjectRepository {
       where.push('status = ?')
       parameters.push(filters.status)
     }
+    if (filters.tag) {
+      where.push(
+        `id IN (SELECT l.entity_id FROM tag_link l JOIN tag t ON t.id = l.tag_id
+                 WHERE l.entity_type = 'project' AND t.name = ? COLLATE NOCASE)`,
+      )
+      parameters.push(filters.tag)
+    }
     const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
     const rows = this.database
       .prepare(`SELECT ${PROJECT_COLUMNS} FROM project ${clause} ORDER BY updated_at DESC, title ASC`)
       .all(...parameters) as Row[]
-    const allocations = this.#allocationsFor(rows.map((row) => String(row.id)))
-    return rows.map((row) => toProject(row, allocations.get(String(row.id)) ?? emptyAllocations()))
+    const ids = rows.map((row) => String(row.id))
+    const allocations = this.#allocationsFor(ids)
+    const tags = this.tags.namesFor('project', ids)
+    return rows.map((row) => toProject(row, allocations.get(String(row.id)) ?? emptyAllocations(), tags.get(String(row.id)) ?? []))
   }
 
   get(id: string): Project | null {
     const row = this.database.prepare(`SELECT ${PROJECT_COLUMNS} FROM project WHERE id = ?`).get(id) as Row | undefined
     if (!row) return null
-    return toProject(row, this.#allocationsFor([id]).get(id) ?? emptyAllocations())
+    return toProject(row, this.#allocationsFor([id]).get(id) ?? emptyAllocations(), this.tags.namesFor('project', [id]).get(id) ?? [])
   }
 
   #require(id: string): Project {
@@ -118,6 +133,7 @@ export class ProjectRepository {
          VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
       )
       .run(id, input.title, input.patternViewId, input.status, input.startedOn, input.finishedOn, input.notes, nowIso, nowIso)
+    this.tags.setFor('project', id, input.tags, nowIso)
     return this.#require(id)
   }
 
@@ -135,6 +151,7 @@ export class ProjectRepository {
       this.#consume(id, nowIso)
     }
     // Moving off done un-consumes nothing: the cloth is already cut.
+    this.tags.setFor('project', id, input.tags, nowIso)
     return this.#require(id)
   }
 

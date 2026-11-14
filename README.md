@@ -18,6 +18,8 @@ Local-first, no account, runs on your own box. Mobile-first: designed for the ph
 | **Patterns** — the library you already own | **Projects** — what you are making | **Allocation** — shortfalls and too-narrow fabric, named before you cut |
 | ![Search](docs/screenshots/07-search.png) | ![Settings](docs/screenshots/08-settings.png) | ![Imperial](docs/screenshots/09-stash-imperial.png) |
 | **Search** — across fabric, patterns, thread and tools | **Settings** — units, authenticator, activity | **Imperial** — lengths read in yards and inches |
+| ![Tagging](docs/screenshots/10-fabric-tags.png) | ![Views](docs/screenshots/11-pattern-views.png) | |
+| **Tagging** — one vocabulary, offered as chips | **Views and yardage** — what each view of a pattern takes | |
 
 ## Where it fits
 
@@ -39,7 +41,8 @@ fabric on the shelf and the patterns in the box, and answers the question a proj
   location, photos. A bolt splits as you use it, and the yardage comes off it when a project is
   finished.
 - **Patterns** — brand, number, format, size range, difficulty, category, plus **views**, each
-  with its own yardage requirements and notions.
+  with its own yardage requirements and notions — all editable in the client.
+- **Tags** — one vocabulary shared by every record, filterable, and searchable.
 - **Thread** and **tools** as first-class records — thread with brand, colour code, fibre, spools
   and metres left; tools with a category and a needs-attention flag.
 - **Notions** — buttons, zippers, interfacing, elastic, trims.
@@ -92,13 +95,13 @@ then claim the instance again with the setup token.
   entities. Single-user auth in the house model: a setup token claims the instance, then a
   passphrase with optional TOTP, `__Host-` sessions, rate limiting and an audit log.
 - **Client** — React + Vite, mobile-first: bottom navigation, camera-first fabric capture with
-  client-side downscale and EXIF stripping, drag-to-dismiss sheets, swipe-free delete with undo,
-  and the yardage meter. All verified in a real browser (the screenshots above).
+  client-side downscale and EXIF stripping, drag-to-dismiss sheets, delete with undo, the yardage
+  meter, tags, the pattern views/requirements editor, and a per-device metric/imperial choice.
+  All verified in a real browser (the screenshots above).
 
-100 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
+110 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
 
-**Not yet:** docker image and deployment notes (M7); the pattern views and requirements are read
-in the client but edited only through the API for now. See `docs/technical-design.md` §11.
+**Not yet:** docker image and deployment notes (M7). See `docs/technical-design.md` §11.
 
 ## Docs
 

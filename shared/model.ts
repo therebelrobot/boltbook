@@ -8,6 +8,15 @@ export type RequirementRole = 'main' | 'lining' | 'interfacing' | 'other'
 export type NotionKind = 'button' | 'zipper' | 'interfacing' | 'elastic' | 'trim' | 'other'
 export type ToolCategory = 'cutting' | 'measuring' | 'pressing' | 'machine' | 'marking' | 'needles_pins' | 'other'
 
+/** Everything that can carry tags. */
+export type TaggableType = 'fabric' | 'pattern' | 'thread' | 'tool' | 'notion' | 'project'
+
+export interface Tag {
+  id: string
+  name: string
+  usageCount: number
+}
+
 export interface FabricPhoto {
   id: string
   fabricId: string
@@ -37,6 +46,7 @@ export interface Fabric {
   care: string | null
   notes: string | null
   photos: FabricPhoto[]
+  tags: string[]
   createdAt: string
   updatedAt: string
 }
@@ -49,6 +59,7 @@ export interface FabricFilters {
   location?: string
   /** Only fabrics whose remaining length is at least this many millimetres. */
   minLengthMm?: number
+  tag?: string
 }
 
 export interface PatternRequirement {
@@ -92,6 +103,7 @@ export interface Pattern {
   linkUrl: string | null
   notes: string | null
   views: PatternView[]
+  tags: string[]
   createdAt: string
   updatedAt: string
 }
@@ -111,6 +123,7 @@ export interface PatternInput {
   triedAndTrue: boolean
   linkUrl: string | null
   notes: string | null
+  tags: string[]
 }
 
 export interface PatternFilters {
@@ -118,6 +131,7 @@ export interface PatternFilters {
   category?: string
   format?: PatternFormat
   triedAndTrue?: boolean
+  tag?: string
 }
 
 export interface Notion {
@@ -130,6 +144,7 @@ export interface Notion {
   unit: string | null
   location: string | null
   notes: string | null
+  tags: string[]
   createdAt: string
   updatedAt: string
 }
@@ -139,6 +154,7 @@ export type NotionInput = Omit<Notion, 'id' | 'createdAt' | 'updatedAt'>
 export interface NotionFilters {
   kind?: NotionKind
   location?: string
+  tag?: string
 }
 
 /** Thread is its own thing: brand/line, colour code, fibre, weight, spools, metres left. */
@@ -160,6 +176,7 @@ export interface Thread {
   currency: string | null
   acquiredOn: string | null
   notes: string | null
+  tags: string[]
   createdAt: string
   updatedAt: string
 }
@@ -170,6 +187,7 @@ export interface ThreadFilters {
   colour?: string
   fibre?: string
   location?: string
+  tag?: string
 }
 
 export interface Tool {
@@ -185,6 +203,7 @@ export interface Tool {
   costMinor: number | null
   currency: string | null
   notes: string | null
+  tags: string[]
   createdAt: string
   updatedAt: string
 }
@@ -195,6 +214,7 @@ export interface ToolFilters {
   category?: ToolCategory
   location?: string
   needsAttention?: boolean
+  tag?: string
 }
 
 // ---------- projects and allocation ----------
@@ -236,6 +256,7 @@ export interface Project {
   finishedOn: string | null
   notes: string | null
   allocations: ProjectAllocations
+  tags: string[]
   createdAt: string
   updatedAt: string
 }
@@ -244,6 +265,7 @@ export type ProjectInput = Omit<Project, 'id' | 'allocations' | 'consumed' | 'cr
 
 export interface ProjectFilters {
   status?: ProjectStatus
+  tag?: string
 }
 
 export type ConsumableKind = 'fabric' | 'thread' | 'notion'

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import type { Fabric, FabricFilters, FabricInput, FabricPhoto } from '../../shared/model'
+import { TagsRepository } from './tags'
 import { RecordConflictError, RecordNotFoundError, RecordValidationError } from '../errors'
 
 type Row = Record<string, unknown>
@@ -40,7 +41,7 @@ function toPhoto(row: Row): FabricPhoto {
   }
 }
 
-function toFabric(row: Row, photos: FabricPhoto[]): Fabric {
+function toFabric(row: Row, photos: FabricPhoto[], tags: string[]): Fabric {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -59,6 +60,7 @@ function toFabric(row: Row, photos: FabricPhoto[]): Fabric {
     care: nullableText(row.care),
     notes: nullableText(row.notes),
     photos,
+    tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }
@@ -86,7 +88,11 @@ function valuesOf(input: FabricInput): Array<string | number | null> {
 }
 
 export class FabricRepository {
-  constructor(private readonly database: Database) {}
+  private readonly tags: TagsRepository
+
+  constructor(private readonly database: Database) {
+    this.tags = new TagsRepository(database)
+  }
 
   count(): number {
     const row = this.database.prepare('SELECT COUNT(*) AS n FROM fabric').get() as Row
@@ -124,18 +130,27 @@ export class FabricRepository {
       where.push('length_mm >= ?')
       parameters.push(filters.minLengthMm)
     }
+    if (filters.tag) {
+      where.push(
+        `id IN (SELECT l.entity_id FROM tag_link l JOIN tag t ON t.id = l.tag_id
+                 WHERE l.entity_type = 'fabric' AND t.name = ? COLLATE NOCASE)`,
+      )
+      parameters.push(filters.tag)
+    }
     const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
     const rows = this.database
       .prepare(`SELECT ${COLUMNS} FROM fabric ${clause} ORDER BY updated_at DESC, name ASC`)
       .all(...parameters) as Row[]
-    const photos = this.#photosFor(rows.map((row) => String(row.id)))
-    return rows.map((row) => toFabric(row, photos.get(String(row.id)) ?? []))
+    const ids = rows.map((row) => String(row.id))
+    const photos = this.#photosFor(ids)
+    const tags = this.tags.namesFor('fabric', ids)
+    return rows.map((row) => toFabric(row, photos.get(String(row.id)) ?? [], tags.get(String(row.id)) ?? []))
   }
 
   get(id: string): Fabric | null {
     const row = this.database.prepare(`SELECT ${COLUMNS} FROM fabric WHERE id = ?`).get(id) as Row | undefined
     if (!row) return null
-    return toFabric(row, this.#photosFor([id]).get(id) ?? [])
+    return toFabric(row, this.#photosFor([id]).get(id) ?? [], this.tags.namesFor('fabric', [id]).get(id) ?? [])
   }
 
   #require(id: string): Fabric {
@@ -154,6 +169,7 @@ export class FabricRepository {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(id, ...valuesOf(input), nowIso, nowIso)
+    this.tags.setFor('fabric', id, input.tags, nowIso)
     return this.#require(id)
   }
 
@@ -167,6 +183,7 @@ export class FabricRepository {
          WHERE id = ?`,
       )
       .run(...valuesOf(input), nowIso, id)
+    this.tags.setFor('fabric', id, input.tags, nowIso)
     return this.#require(id)
   }
 

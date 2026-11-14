@@ -2,22 +2,11 @@ import { useState } from 'react'
 import { api } from '../api'
 import { useCollection } from '../useCollection'
 import { EntitySheet } from '../components/EntitySheet'
+import { ViewsEditor } from '../components/ViewsEditor'
 import { useToast } from '../components/Toast'
 import { PATTERN_FIELDS } from '../fields'
 import { joinMeta } from '../format'
-
-interface Pattern {
-  id: string
-  name: string
-  brand: string | null
-  number: string | null
-  format: string | null
-  category: string | null
-  sizeMin: string | null
-  sizeMax: string | null
-  triedAndTrue: boolean
-  views: unknown[]
-}
+import type { Pattern } from '../../shared/model'
 
 const PATHS = '/api/patterns'
 
@@ -69,6 +58,7 @@ export function PatternsScreen() {
                     pattern.number,
                     pattern.category,
                     pattern.sizeMin && `size ${pattern.sizeMin}${pattern.sizeMax ? `–${pattern.sizeMax}` : ''}`,
+                    pattern.tags.length > 0 && pattern.tags.map((tag) => `#${tag}`).join(' '),
                   ]) || 'No details yet'}
                 </span>
               </span>
@@ -96,7 +86,13 @@ export function PatternsScreen() {
           onSave={save}
           onDelete={sheet.mode === 'edit' ? remove : undefined}
           onClose={() => setSheet(null)}
-        />
+        >
+          {sheet.mode === 'edit' && record ? (
+            <ViewsEditor pattern={record} onChanged={() => void reload()} />
+          ) : (
+            <p className="muted">Save the pattern, then add its views and yardage.</p>
+          )}
+        </EntitySheet>
       )}
     </>
   )

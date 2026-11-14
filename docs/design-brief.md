@@ -181,6 +181,9 @@ threshold, so a vertical scroll is never stolen.
 - **Finishing a project** may attach one optional photo of the made garment. Optional, never
   required, never blocking.
 - **Chips** — fibre, tags. Tappable, with the tap target padded out to 44 px.
+- **Tags are a shared vocabulary.** One tag field on every record type, with the tags already in
+  use offered as one-tap chips (most-used first) so the set converges instead of sprawling.
+  Tags can be filtered on, and a search finds a record by its tag.
 - **Forms** — `inputmode="decimal"` for yardage, `inputmode="numeric"` for counts, 16 px inputs,
   inline validation, `enterkeyhint="done"`.
 - **Empty states** — "No fabric yet. Take a photo of the first bolt, or type it in." Every list

@@ -10,6 +10,7 @@ import type {
   PatternViewInput,
   RequirementRole,
 } from '../../shared/model'
+import { TagsRepository } from './tags'
 import { RecordNotFoundError } from '../errors'
 
 type Row = Record<string, unknown>
@@ -44,7 +45,7 @@ function toView(row: Row, requirements: PatternRequirement[]): PatternView {
   }
 }
 
-function toPattern(row: Row, views: PatternView[]): Pattern {
+function toPattern(row: Row, views: PatternView[], tags: string[]): Pattern {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -61,6 +62,7 @@ function toPattern(row: Row, views: PatternView[]): Pattern {
     linkUrl: nullableText(row.link_url),
     notes: nullableText(row.notes),
     views,
+    tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }
@@ -83,7 +85,11 @@ const PATTERN_VALUES = (input: PatternInput): Array<string | number | null> => [
 ]
 
 export class PatternRepository {
-  constructor(private readonly database: Database) {}
+  private readonly tags: TagsRepository
+
+  constructor(private readonly database: Database) {
+    this.tags = new TagsRepository(database)
+  }
 
   count(): number {
     const row = this.database.prepare('SELECT COUNT(*) AS n FROM pattern').get() as Row
@@ -145,18 +151,27 @@ export class PatternRepository {
       where.push('tried_and_true = ?')
       parameters.push(filters.triedAndTrue ? 1 : 0)
     }
+    if (filters.tag) {
+      where.push(
+        `id IN (SELECT l.entity_id FROM tag_link l JOIN tag t ON t.id = l.tag_id
+                 WHERE l.entity_type = 'pattern' AND t.name = ? COLLATE NOCASE)`,
+      )
+      parameters.push(filters.tag)
+    }
     const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
     const rows = this.database
       .prepare(`SELECT ${PATTERN_COLUMNS} FROM pattern ${clause} ORDER BY updated_at DESC, name ASC`)
       .all(...parameters) as Row[]
-    const views = this.#viewsByPatternId(rows.map((row) => String(row.id)))
-    return rows.map((row) => toPattern(row, views.get(String(row.id)) ?? []))
+    const ids = rows.map((row) => String(row.id))
+    const views = this.#viewsByPatternId(ids)
+    const tags = this.tags.namesFor('pattern', ids)
+    return rows.map((row) => toPattern(row, views.get(String(row.id)) ?? [], tags.get(String(row.id)) ?? []))
   }
 
   get(id: string): Pattern | null {
     const row = this.database.prepare(`SELECT ${PATTERN_COLUMNS} FROM pattern WHERE id = ?`).get(id) as Row | undefined
     if (!row) return null
-    return toPattern(row, this.#viewsByPatternId([id]).get(id) ?? [])
+    return toPattern(row, this.#viewsByPatternId([id]).get(id) ?? [], this.tags.namesFor('pattern', [id]).get(id) ?? [])
   }
 
   #require(id: string): Row {
@@ -174,7 +189,8 @@ export class PatternRepository {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(id, ...PATTERN_VALUES(input), nowIso, nowIso)
-    return toPattern(this.#require(id), [])
+    this.tags.setFor('pattern', id, input.tags, nowIso)
+    return this.get(id)!
   }
 
   replace(id: string, input: PatternInput, nowIso: string): Pattern {
@@ -186,6 +202,7 @@ export class PatternRepository {
           notes = ?, updated_at = ? WHERE id = ?`,
       )
       .run(...PATTERN_VALUES(input), nowIso, id)
+    this.tags.setFor('pattern', id, input.tags, nowIso)
     return this.get(id)!
   }
 

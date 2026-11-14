@@ -15,6 +15,7 @@ interface Project {
   title: string
   status: string
   startedOn: string | null
+  tags: string[]
   allocations: ProjectAllocations
 }
 
@@ -263,6 +264,7 @@ export function ProjectsScreen() {
                     statusLabel(project.status),
                     project.startedOn && `started ${project.startedOn}`,
                     project.allocations.fabrics.length > 0 && `${project.allocations.fabrics.length} fabric`,
+                    project.tags.length > 0 && project.tags.map((tag) => `#${tag}`).join(' '),
                   ]) || 'No allocation'}
                 </span>
               </span>

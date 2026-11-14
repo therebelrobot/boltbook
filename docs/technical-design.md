@@ -250,8 +250,7 @@ SQLite **FTS5** — verified present in Node 26.13.1's bundled SQLite (3.54.1) a
 `LIKE` fallback is not needed. External-content indexes over the source tables, kept current by
 triggers:
 
-- `fabric_fts(name, fibre, colour, print_type, location, notes)` — built at M1; a `tags` column
-  joins when `tag_link` does (a later migration).
+- `fabric_fts(name, fibre, colour, print_type, location, notes)` — built at M1.
 - `pattern_fts(brand, number, name, category, notes)` — built at M2.
 - `thread_fts(brand, name, colour, colour_code, fibre, notes)` — built at M2b.
 - `tool_fts(name, brand, category, spec, notes)` — built at M2b.
@@ -260,6 +259,14 @@ triggers:
 title, the best snippet, and — for fabric — remaining `length_mm`. Free text is tokenised and
 each word is quoted as a prefix term (`"linen"*` joined by `AND`), so user punctuation can never
 be read as FTS5 syntax.
+
+**Tags are a second pass, not an FTS column.** FTS5 tables here are external-content, so a
+`tags` column would have to be a real column on the source table — and every tag write would then
+have to re-index the owning record. Instead, `searchAll` unions the FTS hits with the records
+whose *tags* match any token (`repository/tags.searchByTag`), de-duplicating by entity and
+setting the snippet to `tags: …`. FTS covers the fields; the union covers the labels. At a
+personal scale this is simpler than maintaining five tag-indexing trigger sets, and it is honest
+about what matched.
 
 ## 7. Photos and files
 
@@ -350,6 +357,7 @@ land at M5.
 | M4 | Auth | setup/login/logout/passphrase/TOTP, sessions, rate limit, guards — **done** |
 | M4b | Photos | fabric_photo, raw-bytes upload, serve by id, delete, cascade — **done** |
 | M5 | Client | React + Vite, mobile-first: shell, access, stash with camera-first photos, patterns, projects with allocation, search, settings, units — **done** |
+| M5b | Tags + views editor | tag store, routes, filters and tag search; the pattern views/requirements editor in the client — **done** |
 | M6 | Export + audit | zip export, backup doc |
 | M7 | Ship | Dockerfile (multi-stage), compose, reverse proxy notes, deploy |
 

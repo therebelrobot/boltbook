@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import type { Notion, NotionFilters, NotionInput, NotionKind } from '../../shared/model'
+import { TagsRepository } from './tags'
 import { RecordNotFoundError } from '../errors'
 
 type Row = Record<string, unknown>
@@ -10,7 +11,7 @@ const COLUMNS = `id, name, kind, colour, spec, quantity, unit, location, notes, 
 const nullableText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value))
 const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
 
-function toNotion(row: Row): Notion {
+function toNotion(row: Row, tags: string[]): Notion {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -21,6 +22,7 @@ function toNotion(row: Row): Notion {
     unit: nullableText(row.unit),
     location: nullableText(row.location),
     notes: nullableText(row.notes),
+    tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }
@@ -38,7 +40,11 @@ const valuesOf = (input: NotionInput): Array<string | number | null> => [
 ]
 
 export class NotionRepository {
-  constructor(private readonly database: Database) {}
+  private readonly tags: TagsRepository
+
+  constructor(private readonly database: Database) {
+    this.tags = new TagsRepository(database)
+  }
 
   count(): number {
     const row = this.database.prepare('SELECT COUNT(*) AS n FROM notion').get() as Row
@@ -56,16 +62,24 @@ export class NotionRepository {
       where.push('location = ? COLLATE NOCASE')
       parameters.push(filters.location)
     }
+    if (filters.tag) {
+      where.push(
+        `id IN (SELECT l.entity_id FROM tag_link l JOIN tag t ON t.id = l.tag_id
+                 WHERE l.entity_type = 'notion' AND t.name = ? COLLATE NOCASE)`,
+      )
+      parameters.push(filters.tag)
+    }
     const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
     const rows = this.database
       .prepare(`SELECT ${COLUMNS} FROM notion ${clause} ORDER BY kind ASC, name ASC`)
       .all(...parameters) as Row[]
-    return rows.map(toNotion)
+    const tags = this.tags.namesFor('notion', rows.map((row) => String(row.id)))
+    return rows.map((row) => toNotion(row, tags.get(String(row.id)) ?? []))
   }
 
   get(id: string): Notion | null {
     const row = this.database.prepare(`SELECT ${COLUMNS} FROM notion WHERE id = ?`).get(id) as Row | undefined
-    return row ? toNotion(row) : null
+    return row ? toNotion(row, this.tags.namesFor('notion', [id]).get(id) ?? []) : null
   }
 
   #require(id: string): Notion {
@@ -82,6 +96,7 @@ export class NotionRepository {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(id, ...valuesOf(input), nowIso, nowIso)
+    this.tags.setFor('notion', id, input.tags, nowIso)
     return this.#require(id)
   }
 
@@ -93,6 +108,7 @@ export class NotionRepository {
           location = ?, notes = ?, updated_at = ? WHERE id = ?`,
       )
       .run(...valuesOf(input), nowIso, id)
+    this.tags.setFor('notion', id, input.tags, nowIso)
     return this.#require(id)
   }
 

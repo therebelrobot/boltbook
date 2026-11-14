@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import type { Tool, ToolCategory, ToolFilters, ToolInput } from '../../shared/model'
+import { TagsRepository } from './tags'
 import { RecordNotFoundError } from '../errors'
 
 type Row = Record<string, unknown>
@@ -11,7 +12,7 @@ const COLUMNS = `id, name, category, brand, spec, quantity, location, needs_atte
 const nullableText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value))
 const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
 
-function toTool(row: Row): Tool {
+function toTool(row: Row, tags: string[]): Tool {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -25,6 +26,7 @@ function toTool(row: Row): Tool {
     costMinor: nullableNumber(row.cost_minor),
     currency: nullableText(row.currency),
     notes: nullableText(row.notes),
+    tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }
@@ -45,7 +47,11 @@ const valuesOf = (input: ToolInput): Array<string | number | null> => [
 ]
 
 export class ToolRepository {
-  constructor(private readonly database: Database) {}
+  private readonly tags: TagsRepository
+
+  constructor(private readonly database: Database) {
+    this.tags = new TagsRepository(database)
+  }
 
   count(): number {
     const row = this.database.prepare('SELECT COUNT(*) AS n FROM tool').get() as Row
@@ -67,16 +73,24 @@ export class ToolRepository {
       where.push('needs_attention = ?')
       parameters.push(filters.needsAttention ? 1 : 0)
     }
+    if (filters.tag) {
+      where.push(
+        `id IN (SELECT l.entity_id FROM tag_link l JOIN tag t ON t.id = l.tag_id
+                 WHERE l.entity_type = 'tool' AND t.name = ? COLLATE NOCASE)`,
+      )
+      parameters.push(filters.tag)
+    }
     const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
     const rows = this.database
       .prepare(`SELECT ${COLUMNS} FROM tool ${clause} ORDER BY category ASC, name ASC`)
       .all(...parameters) as Row[]
-    return rows.map(toTool)
+    const tags = this.tags.namesFor('tool', rows.map((row) => String(row.id)))
+    return rows.map((row) => toTool(row, tags.get(String(row.id)) ?? []))
   }
 
   get(id: string): Tool | null {
     const row = this.database.prepare(`SELECT ${COLUMNS} FROM tool WHERE id = ?`).get(id) as Row | undefined
-    return row ? toTool(row) : null
+    return row ? toTool(row, this.tags.namesFor('tool', [id]).get(id) ?? []) : null
   }
 
   #require(id: string): Tool {
@@ -94,6 +108,7 @@ export class ToolRepository {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(id, ...valuesOf(input), nowIso, nowIso)
+    this.tags.setFor('tool', id, input.tags, nowIso)
     return this.#require(id)
   }
 
@@ -106,6 +121,7 @@ export class ToolRepository {
          WHERE id = ?`,
       )
       .run(...valuesOf(input), nowIso, id)
+    this.tags.setFor('tool', id, input.tags, nowIso)
     return this.#require(id)
   }
 

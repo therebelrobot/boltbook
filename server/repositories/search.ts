@@ -1,10 +1,11 @@
 import type { Database } from '../database'
-import type { SearchHit } from '../../shared/model'
+import type { SearchHit, TaggableType } from '../../shared/model'
+import { TagsRepository } from './tags'
 
 type Row = Record<string, unknown>
 
 const nullableText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value))
-const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
+const placeholders = (count: number): string => new Array(count).fill('?').join(', ')
 
 /**
  * Turn free text into a safe FTS5 MATCH expression: every word becomes a quoted
@@ -12,21 +13,29 @@ const nullableNumber = (value: unknown): number | null => (value === null || val
  * as FTS5 syntax, which would otherwise throw on a stray `"` or `*`.
  */
 export function buildMatchQuery(query: string): string | null {
-  const words = query.match(/[\p{L}\p{N}]+/gu) ?? []
+  const words = tokensOf(query)
   if (words.length === 0) return null
   return words.map((word) => `"${word}"*`).join(' AND ')
 }
 
+export function tokensOf(query: string): string[] {
+  return query.match(/[\p{L}\p{N}]+/gu) ?? []
+}
+
 /**
- * Ranked search across every indexed entity. BM25 scores from different tables
- * are not comparable, so results are grouped by entity in a fixed order rather
- * than interleaved: fabric, pattern, thread, tool.
+ * Ranked search across every indexed entity, plus a pass over the tags.
+ *
+ * BM25 scores from different tables are not comparable, so results are grouped
+ * by entity in a fixed order rather than interleaved: fabric, pattern, thread,
+ * tool. A record whose *tag* matches is appended to its group — FTS covers the
+ * fields, this covers the labels, and the snippet says which tag matched.
  */
 export function searchAll(database: Database, query: string, limit = 25): SearchHit[] {
   const matchQuery = buildMatchQuery(query)
-  if (!matchQuery) return []
+  const tokens = tokensOf(query)
+  if (!matchQuery && tokens.length === 0) return []
 
-  const queryTable = (sql: string): Row[] => database.prepare(sql).all(matchQuery, limit) as Row[]
+  const queryTable = (sql: string): Row[] => (matchQuery ? (database.prepare(sql).all(matchQuery, limit) as Row[]) : [])
 
   const fabricRows = queryTable(
     `SELECT f.id AS id, f.name AS name, f.length_mm AS length_mm,
@@ -53,13 +62,13 @@ export function searchAll(database: Database, query: string, limit = 25): Search
       WHERE tool_fts MATCH ? ORDER BY bm25(tool_fts), o.name ASC LIMIT ?`,
   )
 
-  return [
+  const hits: SearchHit[] = [
     ...fabricRows.map((row) => ({
       type: 'fabric' as const,
       id: String(row.id),
       title: String(row.name),
       snippet: nullableText(row.snippet),
-      lengthMm: nullableNumber(row.length_mm),
+      lengthMm: row.length_mm === null || row.length_mm === undefined ? null : Number(row.length_mm),
     })),
     ...patternRows.map((row) => ({
       type: 'pattern' as const,
@@ -83,4 +92,61 @@ export function searchAll(database: Database, query: string, limit = 25): Search
       lengthMm: null,
     })),
   ]
+
+  // Tag matches, appended to their group and de-duplicated against the FTS hits.
+  if (tokens.length > 0) {
+    const tags = new TagsRepository(database)
+    const alreadySeen = new Set(hits.map((hit) => `${hit.type}:${hit.id}`))
+    const addTagged = (
+      entityType: TaggableType,
+      loadRows: (ids: string[]) => Row[],
+      type: SearchHit['type'],
+      titleOf: (row: Row) => string,
+    ): void => {
+      const matches = tags.searchByTag(entityType, tokens, limit)
+      if (matches.length === 0) return
+      const rowsById = new Map(loadRows(matches.map((match) => match.entityId)).map((row) => [String(row.id), row]))
+      for (const match of matches) {
+        const key = `${type}:${match.entityId}`
+        if (alreadySeen.has(key)) continue
+        const row = rowsById.get(match.entityId)
+        if (!row) continue
+        alreadySeen.add(key)
+        hits.push({
+          type,
+          id: match.entityId,
+          title: titleOf(row),
+          snippet: `tags: ${match.names.join(', ')}`,
+          lengthMm: row.length_mm === null || row.length_mm === undefined ? null : Number(row.length_mm),
+        })
+      }
+    }
+
+    addTagged(
+      'fabric',
+      (ids) => database.prepare(`SELECT id, name, length_mm FROM fabric WHERE id IN (${placeholders(ids.length)})`).all(...ids) as Row[],
+      'fabric',
+      (row) => String(row.name),
+    )
+    addTagged(
+      'pattern',
+      (ids) => database.prepare(`SELECT id, name FROM pattern WHERE id IN (${placeholders(ids.length)})`).all(...ids) as Row[],
+      'pattern',
+      (row) => String(row.name),
+    )
+    addTagged(
+      'thread',
+      (ids) => database.prepare(`SELECT id, name, colour FROM thread WHERE id IN (${placeholders(ids.length)})`).all(...ids) as Row[],
+      'thread',
+      (row) => (nullableText(row.colour) ? `${String(row.name)} — ${String(row.colour)}` : String(row.name)),
+    )
+    addTagged(
+      'tool',
+      (ids) => database.prepare(`SELECT id, name FROM tool WHERE id IN (${placeholders(ids.length)})`).all(...ids) as Row[],
+      'tool',
+      (row) => String(row.name),
+    )
+  }
+
+  return hits
 }

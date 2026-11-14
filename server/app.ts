@@ -15,6 +15,7 @@ import { NotionRepository } from './repositories/notions'
 import { ThreadRepository, assertThreadInvariant } from './repositories/threads'
 import { ToolRepository } from './repositories/tools'
 import { ProjectRepository } from './repositories/projects'
+import { TagsRepository } from './repositories/tags'
 import { searchAll } from './repositories/search'
 import {
   FABRIC_ALLOCATION_MEASURES,
@@ -43,6 +44,7 @@ import {
   patternViewInputSchema,
   projectInputSchema,
   setupRequestSchema,
+  tagInputSchema,
   threadInputSchema,
   toolInputSchema,
   totpConfirmRequestSchema,
@@ -122,6 +124,7 @@ export function createApplication(dependencies: ApplicationDependencies) {
   const threads = new ThreadRepository(database)
   const tools = new ToolRepository(database)
   const projects = new ProjectRepository(database)
+  const tags = new TagsRepository(database)
   const account = new AccountService(database, config.scryptParameters, currentTimeMilliseconds)
   const sessions = new SessionStore(
     config.sessionIdleMinutes * 60_000,
@@ -425,6 +428,8 @@ export function createApplication(dependencies: ApplicationDependencies) {
       if (!Number.isFinite(parsed) || parsed < 0) throw new RecordValidationError('minLengthMm must be a non-negative number.')
       filters.minLengthMm = Math.floor(parsed)
     }
+    const tag = context.req.query('tag')
+    if (tag) filters.tag = tag
     const units = unitsOf(context)
     return context.json(fabrics.list(filters).map((fabric) => presentMeasures(fabric, FABRIC_MEASURES, units)))
   })
@@ -495,6 +500,8 @@ export function createApplication(dependencies: ApplicationDependencies) {
     }
     const triedAndTrue = booleanQuery(context.req.query('triedAndTrue'), 'triedAndTrue')
     if (triedAndTrue !== undefined) filters.triedAndTrue = triedAndTrue
+    const tag = context.req.query('tag')
+    if (tag) filters.tag = tag
     const units = unitsOf(context)
     return context.json(patterns.list(filters).map((pattern) => presentPattern(pattern, units)))
   })
@@ -574,6 +581,8 @@ export function createApplication(dependencies: ApplicationDependencies) {
     }
     const location = context.req.query('location')
     if (location) filters.location = location
+    const tag = context.req.query('tag')
+    if (tag) filters.tag = tag
     return context.json(notions.list(filters))
   })
 
@@ -608,6 +617,8 @@ export function createApplication(dependencies: ApplicationDependencies) {
     if (fibre) filters.fibre = fibre
     const location = context.req.query('location')
     if (location) filters.location = location
+    const tag = context.req.query('tag')
+    if (tag) filters.tag = tag
     const units = unitsOf(context)
     return context.json(threads.list(filters).map((thread) => presentMeasures(thread, THREAD_MEASURES, units)))
   })
@@ -648,6 +659,8 @@ export function createApplication(dependencies: ApplicationDependencies) {
     if (location) filters.location = location
     const needsAttention = booleanQuery(context.req.query('needsAttention'), 'needsAttention')
     if (needsAttention !== undefined) filters.needsAttention = needsAttention
+    const tag = context.req.query('tag')
+    if (tag) filters.tag = tag
     return context.json(tools.list(filters))
   })
 
@@ -681,6 +694,8 @@ export function createApplication(dependencies: ApplicationDependencies) {
       if (!PROJECT_STATUSES.includes(status as ProjectStatus)) throw new RecordValidationError('Unknown project status.')
       filters.status = status as ProjectStatus
     }
+    const tag = context.req.query('tag')
+    if (tag) filters.tag = tag
     const units = unitsOf(context)
     return context.json(projects.list(filters).map((project) => presentProject(project, units)))
   })
@@ -725,6 +740,20 @@ export function createApplication(dependencies: ApplicationDependencies) {
     return context.json(presentShortfallLines(lines, unitsOf(context)))
   })
 
+  // Tags — one vocabulary, shared by every record
+
+  app.get('/api/tags', (context) => context.json(tags.listAll()))
+
+  app.post('/api/tags', async (context) => {
+    const input = await readJsonBody(context, tagInputSchema)
+    return context.json(tags.create(input.name, nowIso()), 201)
+  })
+
+  app.delete('/api/tags/:tagId', (context) => {
+    tags.delete(context.req.param('tagId'))
+    return context.json({ ok: true })
+  })
+
   // Search
 
   app.get('/api/search', (context) => {
@@ -766,5 +795,5 @@ export function createApplication(dependencies: ApplicationDependencies) {
     return context.json({ error: 'server_error', message: 'Something went wrong on the server.' }, 500)
   })
 
-  return { app, account, sessions, fabrics, patterns, notions, threads, tools, projects }
+  return { app, account, sessions, fabrics, patterns, notions, threads, tools, projects, tags }
 }

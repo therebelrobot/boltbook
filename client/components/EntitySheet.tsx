@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Sheet } from './Sheet'
+import { TagsField } from './TagsField'
 import { useUnit } from '../unitPreference'
 import { fromStored, toStored, unitLabel } from '../units'
 import type { FieldSpec } from '../fields'
@@ -16,12 +17,13 @@ interface EntitySheetProps {
   children?: ReactNode
 }
 
-type FormValue = string | boolean
+type FormValue = string | boolean | string[]
 
 /** Length fields show the device's unit, so a stored 2500 mm reads as 2.73 yd. */
 function displayValue(spec: FieldSpec, record: Record<string, unknown> | null, unit: 'metric' | 'imperial'): FormValue {
   const raw = record?.[spec.name]
   if (spec.kind === 'boolean') return raw === true
+  if (spec.kind === 'tags') return Array.isArray(raw) ? raw.map(String) : []
   if (raw === null || raw === undefined) return ''
   if (spec.unitKind && typeof raw === 'number') {
     const shown = fromStored(raw, spec.unitKind, unit)
@@ -37,6 +39,9 @@ function displayValue(spec: FieldSpec, record: Record<string, unknown> | null, u
  */
 function coerce(spec: FieldSpec, value: FormValue, record: Record<string, unknown> | null, unit: 'metric' | 'imperial'): unknown {
   if (spec.kind === 'boolean') return value === true
+  if (spec.kind === 'tags') {
+    return Array.isArray(value) ? value.map((tag) => tag.trim()).filter((tag) => tag !== '') : []
+  }
   if (typeof value !== 'string' || value.trim() === '') return null
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return null
@@ -64,7 +69,8 @@ export function EntitySheet({ title, fields, record, onSave, onDelete, onClose, 
 
     const payload: Record<string, unknown> = {}
     for (const spec of fields) {
-      const value = values[spec.name] ?? (spec.kind === 'boolean' ? false : '')
+      const fallback: FormValue = spec.kind === 'boolean' ? false : spec.kind === 'tags' ? [] : ''
+      const value = values[spec.name] ?? fallback
       if (spec.required && (typeof value !== 'string' || value.trim() === '')) {
         setError(`${spec.label} is needed.`)
         return
@@ -115,6 +121,15 @@ export function EntitySheet({ title, fields, record, onSave, onDelete, onClose, 
                 />
                 <span>{label}</span>
               </label>
+            )
+          }
+          if (spec.kind === 'tags') {
+            return (
+              <TagsField
+                key={spec.name}
+                value={Array.isArray(value) ? value : []}
+                onChange={(tags) => setValues((current) => ({ ...current, [spec.name]: tags }))}
+              />
             )
           }
           return (

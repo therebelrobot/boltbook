@@ -2,7 +2,7 @@
 
 import type { UnitKind } from './units'
 
-export type FieldKind = 'text' | 'number' | 'boolean' | 'select' | 'textarea'
+export type FieldKind = 'text' | 'number' | 'boolean' | 'select' | 'textarea' | 'tags'
 
 export interface FieldSpec {
   name: string
@@ -29,6 +29,7 @@ export const FABRIC_FIELDS: readonly FieldSpec[] = [
   { name: 'location', label: 'Location', kind: 'text', placeholder: 'Bin A, shelf 2…' },
   { name: 'care', label: 'Care', kind: 'text' },
   { name: 'notes', label: 'Notes', kind: 'textarea' },
+  { name: 'tags', label: 'Tags', kind: 'tags' },
 ]
 
 export const THREAD_FIELDS: readonly FieldSpec[] = [
@@ -44,6 +45,7 @@ export const THREAD_FIELDS: readonly FieldSpec[] = [
   { name: 'needleSize', label: 'Needle', kind: 'text', placeholder: '80/12' },
   { name: 'location', label: 'Location', kind: 'text' },
   { name: 'notes', label: 'Notes', kind: 'textarea' },
+  { name: 'tags', label: 'Tags', kind: 'tags' },
 ]
 
 export const NOTION_KINDS = ['button', 'zipper', 'interfacing', 'elastic', 'trim', 'other'] as const
@@ -56,6 +58,7 @@ export const NOTION_FIELDS: readonly FieldSpec[] = [
   { name: 'unit', label: 'Unit', kind: 'text', placeholder: 'piece, m…' },
   { name: 'location', label: 'Location', kind: 'text' },
   { name: 'notes', label: 'Notes', kind: 'textarea' },
+  { name: 'tags', label: 'Tags', kind: 'tags' },
 ]
 
 export const TOOL_CATEGORIES = ['cutting', 'measuring', 'pressing', 'machine', 'marking', 'needles_pins', 'other'] as const
@@ -68,6 +71,7 @@ export const TOOL_FIELDS: readonly FieldSpec[] = [
   { name: 'location', label: 'Location', kind: 'text' },
   { name: 'needsAttention', label: 'Needs sharpening or replacing', kind: 'boolean' },
   { name: 'notes', label: 'Notes', kind: 'textarea' },
+  { name: 'tags', label: 'Tags', kind: 'tags' },
 ]
 
 export const PATTERN_FORMATS = ['envelope', 'pdf', 'book', 'other'] as const
@@ -84,6 +88,7 @@ export const PATTERN_FIELDS: readonly FieldSpec[] = [
   { name: 'triedAndTrue', label: 'Tried and true', kind: 'boolean' },
   { name: 'linkUrl', label: 'Link', kind: 'text', placeholder: 'https://…' },
   { name: 'notes', label: 'Notes', kind: 'textarea' },
+  { name: 'tags', label: 'Tags', kind: 'tags' },
 ]
 
 export const PROJECT_STATUSES = ['planned', 'cutting', 'sewing', 'done', 'abandoned'] as const
@@ -93,4 +98,5 @@ export const PROJECT_FIELDS: readonly FieldSpec[] = [
   { name: 'startedOn', label: 'Started', kind: 'text', placeholder: 'YYYY-MM-DD' },
   { name: 'finishedOn', label: 'Finished', kind: 'text', placeholder: 'YYYY-MM-DD' },
   { name: 'notes', label: 'Notes', kind: 'textarea' },
+  { name: 'tags', label: 'Tags', kind: 'tags' },
 ]

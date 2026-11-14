@@ -15,6 +15,9 @@ const optionalCost = nullable(z.number().int().min(0).max(1_000_000_000))
 const optionalCurrency = nullable(z.string().trim().length(3))
 const optionalDate = nullable(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'))
 
+/** Tags are sent as names; the store creates any that do not exist yet. */
+const tagList = z.array(z.string().trim().min(1).max(60)).max(30).default([])
+
 export const fabricInputSchema = z.object({
   name: z.string().trim().min(1).max(200),
   fibre: optionalText(120),
@@ -31,6 +34,7 @@ export const fabricInputSchema = z.object({
   location: optionalText(200),
   care: optionalText(500),
   notes: nullable(z.string().max(5000)),
+  tags: tagList,
 })
 
 export const patternInputSchema = z.object({
@@ -47,6 +51,7 @@ export const patternInputSchema = z.object({
   triedAndTrue: z.boolean().default(false),
   linkUrl: nullable(z.string().trim().max(1000)),
   notes: nullable(z.string().max(5000)),
+  tags: tagList,
 })
 
 export const patternViewInputSchema = z.object({
@@ -70,6 +75,7 @@ export const notionInputSchema = z.object({
   unit: optionalText(40),
   location: optionalText(200),
   notes: nullable(z.string().max(5000)),
+  tags: tagList,
 })
 
 export const threadInputSchema = z.object({
@@ -89,6 +95,7 @@ export const threadInputSchema = z.object({
   currency: optionalCurrency,
   acquiredOn: optionalDate,
   notes: nullable(z.string().max(5000)),
+  tags: tagList,
 })
 
 export const toolInputSchema = z.object({
@@ -103,6 +110,7 @@ export const toolInputSchema = z.object({
   costMinor: optionalCost,
   currency: optionalCurrency,
   notes: nullable(z.string().max(5000)),
+  tags: tagList,
 })
 
 export const projectInputSchema = z.object({
@@ -112,6 +120,7 @@ export const projectInputSchema = z.object({
   startedOn: optionalDate,
   finishedOn: optionalDate,
   notes: nullable(z.string().max(5000)),
+  tags: tagList,
 })
 
 export const allocationsInputSchema = z.object({
@@ -147,4 +156,8 @@ export const passphraseConfirmationSchema = z.object({
 
 export const totpConfirmRequestSchema = z.object({
   code: z.string().trim().min(1).max(20),
+})
+
+export const tagInputSchema = z.object({
+  name: z.string().trim().min(1).max(60),
 })

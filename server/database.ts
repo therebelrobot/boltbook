@@ -8,8 +8,7 @@ import { DatabaseSync } from 'node:sqlite'
  *
  * 1 — fabric (+ FTS5).  2 — pattern, views, requirements, notion (+ FTS5).
  * 3 — thread, tool (+ FTS5).  4 — project and its allocations.
- * 5 — account and audit_log.  6 — fabric photos.
- * Tags are a later migration; see docs/technical-design.md §3.
+ * 5 — account and audit_log.  6 — fabric photos.  7 — tags.
  */
 const MIGRATIONS: string[] = [
   `CREATE TABLE fabric (
@@ -272,6 +271,22 @@ const MIGRATIONS: string[] = [
      created_at   TEXT NOT NULL
    );
    CREATE INDEX fabric_photo_fabric_idx ON fabric_photo(fabric_id, position);`,
+
+  `CREATE TABLE tag (
+     id         TEXT PRIMARY KEY,
+     name       TEXT NOT NULL,
+     created_at TEXT NOT NULL
+   );
+   -- Names are unique case-insensitively: 'Linen' and 'linen' are one tag.
+   CREATE UNIQUE INDEX tag_name_unique ON tag(name COLLATE NOCASE);
+
+   CREATE TABLE tag_link (
+     tag_id      TEXT NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
+     entity_type TEXT NOT NULL,
+     entity_id   TEXT NOT NULL,
+     PRIMARY KEY (tag_id, entity_type, entity_id)
+   );
+   CREATE INDEX tag_link_entity_idx ON tag_link(entity_type, entity_id);`,
 ]
 
 export type Database = DatabaseSync

@@ -11,7 +11,7 @@ import type { LengthUnit } from '../units'
 import { useUnit } from '../unitPreference'
 import { FABRIC_FIELDS, NOTION_FIELDS, THREAD_FIELDS, TOOL_FIELDS } from '../fields'
 import type { FieldSpec } from '../fields'
-import type { FabricPhoto } from '../../shared/model'
+import type { FabricPhoto, Tag } from '../../shared/model'
 
 type Record_ = Record<string, unknown>
 type Kind = 'fabric' | 'thread' | 'notion' | 'tool'
@@ -33,6 +33,12 @@ const KINDS: readonly KindConfig[] = [
 
 const text = (value: unknown): string | null => (value === null || value === undefined || value === '' ? null : String(value))
 const number = (value: unknown): number | null => (value === null || value === undefined || value === '' ? null : Number(value))
+
+/** Tags ride at the end of the subtitle as #hashtags — compact in a row. */
+function withTags(parts: Array<string | null | undefined | false>, item: Record_): string {
+  const tags = Array.isArray(item.tags) ? (item.tags as string[]) : []
+  return joinMeta([...parts, tags.length > 0 ? tags.map((tag) => `#${tag}`).join(' ') : null]) || 'No details yet'
+}
 
 function RowThumb({ photo, fabricId, label }: { photo: FabricPhoto | undefined; fabricId: string; label: string }) {
   if (photo) {
@@ -66,7 +72,7 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
         <RowThumb photo={photos[0]} fabricId={String(item.id)} label={name} />
         <span className="body">
           <span className="title">{name}</span>
-          <span className="meta">{joinMeta([text(item.fibre), text(item.weight), text(item.colour), text(item.location)]) || 'No details yet'}</span>
+          <span className="meta">{withTags([text(item.fibre), text(item.weight), text(item.colour), text(item.location)], item)}</span>
           <Meter remaining={number(item.lengthMm)} original={number(item.originalLengthMm)} />
         </span>
         <span className="right">
@@ -85,7 +91,7 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
         </span>
         <span className="body">
           <span className="title">{name}</span>
-          <span className="meta">{joinMeta([text(item.brand), text(item.fibre), text(item.colour), text(item.location)]) || 'No details yet'}</span>
+          <span className="meta">{withTags([text(item.brand), text(item.fibre), text(item.colour), text(item.location)], item)}</span>
         </span>
         <span className="right">{formatStored(number(item.lengthM), 'threadLength', unit)}</span>
       </button>
@@ -97,7 +103,7 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
       <button type="button" className="row" onClick={onOpen}>
         <span className="body">
           <span className="title">{name}</span>
-          <span className="meta">{joinMeta([text(item.kind), text(item.colour), text(item.location), text(item.spec)]) || 'No details yet'}</span>
+          <span className="meta">{withTags([text(item.kind), text(item.colour), text(item.location), text(item.spec)], item)}</span>
         </span>
         <span className="right">{formatQuantity(number(item.quantity), text(item.unit))}</span>
       </button>
@@ -108,7 +114,7 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
     <button type="button" className="row" onClick={onOpen}>
       <span className="body">
         <span className="title">{name}</span>
-        <span className="meta">{joinMeta([text(item.category)?.replace('_', ' '), text(item.brand), text(item.spec), text(item.location)]) || 'No details yet'}</span>
+        <span className="meta">{withTags([text(item.category)?.replace('_', ' '), text(item.brand), text(item.spec), text(item.location)], item)}</span>
         {item.needsAttention === true && <span className="warn-line">Needs attention</span>}
       </span>
       <span className="right">{formatQuantity(number(item.quantity))}</span>
@@ -128,8 +134,11 @@ function storable(record: Record_): Record_ {
 
 export function StashScreen() {
   const [kind, setKind] = useState<Kind>('fabric')
+  const [tagFilter, setTagFilter] = useState<string | null>(null)
   const config = KINDS.find((entry) => entry.key === kind) ?? KINDS[0]!
-  const { items, error, reload } = useCollection<Record_>(config.path)
+  const path = tagFilter ? `${config.path}?tag=${encodeURIComponent(tagFilter)}` : config.path
+  const { items, error, reload } = useCollection<Record_>(path)
+  const tagList = useCollection<Tag>('/api/tags')
   const toast = useToast()
   const [sheet, setSheet] = useState<{ mode: 'create' } | { mode: 'edit'; id: string } | null>(null)
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
@@ -154,6 +163,7 @@ export function StashScreen() {
       setPendingPhoto(null)
     }
     await reload()
+    await tagList.reload()
   }
 
   const remove = async (): Promise<void> => {
@@ -161,6 +171,7 @@ export function StashScreen() {
     const snapshot = items?.find((item) => item.id === sheet.id)
     await api(`${config.path}/${sheet.id}`, { method: 'DELETE' })
     await reload()
+    await tagList.reload()
     if (snapshot) {
       toast({
         message: `${config.singular} deleted.`,
@@ -192,6 +203,24 @@ export function StashScreen() {
           </button>
         ))}
       </div>
+
+      {(tagList.items ?? []).length > 0 && (
+        <div className="segmented" role="group" aria-label="Filter by tag">
+          <button type="button" aria-pressed={tagFilter === null} onClick={() => setTagFilter(null)}>
+            All
+          </button>
+          {(tagList.items ?? []).map((tag) => (
+            <button
+              type="button"
+              key={tag.id}
+              aria-pressed={tagFilter === tag.name}
+              onClick={() => setTagFilter(tagFilter === tag.name ? null : tag.name)}
+            >
+              {tag.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && <p className="error">{error}</p>}
 

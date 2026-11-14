@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import type { Thread, ThreadFilters, ThreadInput } from '../../shared/model'
+import { TagsRepository } from './tags'
 import { RecordNotFoundError, RecordValidationError } from '../errors'
 
 type Row = Record<string, unknown>
@@ -12,7 +13,7 @@ const COLUMNS = `id, name, brand, colour, colour_code, fibre, weight, spools, le
 const nullableText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value))
 const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
 
-function toThread(row: Row): Thread {
+function toThread(row: Row, tags: string[]): Thread {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -31,6 +32,7 @@ function toThread(row: Row): Thread {
     currency: nullableText(row.currency),
     acquiredOn: nullableText(row.acquired_on),
     notes: nullableText(row.notes),
+    tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }
@@ -56,7 +58,11 @@ const valuesOf = (input: ThreadInput): Array<string | number | null> => [
 ]
 
 export class ThreadRepository {
-  constructor(private readonly database: Database) {}
+  private readonly tags: TagsRepository
+
+  constructor(private readonly database: Database) {
+    this.tags = new TagsRepository(database)
+  }
 
   count(): number {
     const row = this.database.prepare('SELECT COUNT(*) AS n FROM thread').get() as Row
@@ -78,16 +84,24 @@ export class ThreadRepository {
       where.push('location = ? COLLATE NOCASE')
       parameters.push(filters.location)
     }
+    if (filters.tag) {
+      where.push(
+        `id IN (SELECT l.entity_id FROM tag_link l JOIN tag t ON t.id = l.tag_id
+                 WHERE l.entity_type = 'thread' AND t.name = ? COLLATE NOCASE)`,
+      )
+      parameters.push(filters.tag)
+    }
     const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
     const rows = this.database
       .prepare(`SELECT ${COLUMNS} FROM thread ${clause} ORDER BY brand ASC, name ASC, colour ASC`)
       .all(...parameters) as Row[]
-    return rows.map(toThread)
+    const tags = this.tags.namesFor('thread', rows.map((row) => String(row.id)))
+    return rows.map((row) => toThread(row, tags.get(String(row.id)) ?? []))
   }
 
   get(id: string): Thread | null {
     const row = this.database.prepare(`SELECT ${COLUMNS} FROM thread WHERE id = ?`).get(id) as Row | undefined
-    return row ? toThread(row) : null
+    return row ? toThread(row, this.tags.namesFor('thread', [id]).get(id) ?? []) : null
   }
 
   #require(id: string): Thread {
@@ -107,6 +121,7 @@ export class ThreadRepository {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(id, ...valuesOf(input), nowIso, nowIso)
+    this.tags.setFor('thread', id, input.tags, nowIso)
     return this.#require(id)
   }
 
@@ -120,6 +135,7 @@ export class ThreadRepository {
           cost_minor = ?, currency = ?, acquired_on = ?, notes = ?, updated_at = ? WHERE id = ?`,
       )
       .run(...valuesOf(input), nowIso, id)
+    this.tags.setFor('thread', id, input.tags, nowIso)
     return this.#require(id)
   }
 
