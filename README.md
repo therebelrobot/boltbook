@@ -27,10 +27,11 @@ machine, without the account or the cloud.
 
 ## Status
 
-**Designed, not built.** The product brief (`docs/product-brief.md`), the technical design
-(`docs/technical-design.md`), the design brief (`docs/design-brief.md`) and ADR 0001 (no
-encryption at rest) are written. No code yet — M1, the store, is next per the design's
-delivery plan. The client is mobile-first.
+**M1 landed.** The store is real: `server/` (config, migrations, the fabric
+repository, the Hono app, the entry point), `shared/model.ts` as the wire contract, and 11
+passing tests. Fabrics have full CRUD and FTS5 search (`GET /api/search?q=`); `npm audit` is
+clean on Node 26.13.1. Auth does not exist yet — the server binds localhost only. M2 (patterns
+and notions) is next per the design's delivery plan. The client is mobile-first.
 
 ## License
 

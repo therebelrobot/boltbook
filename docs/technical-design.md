@@ -199,16 +199,18 @@ Errors are `{ error, message }` with a stable `error` code; validation errors ad
 
 ## 6. Search
 
-SQLite **FTS5**, if the bundled SQLite in Node 26 provides it (verification task, M1). Two
-external-content indexes over the source tables, kept current by triggers:
+SQLite **FTS5** — verified present in Node 26.13.1's bundled SQLite (3.54.1) at M1, so the
+`LIKE` fallback is not needed. External-content indexes over the source tables, kept current by
+triggers:
 
-- `fabric_fts(name, fibre, colour, print_type, location, notes, tags)`
-- `pattern_fts(brand, number, name, category, notes, tags)`
+- `fabric_fts(name, fibre, colour, print_type, location, notes)` — built at M1; a `tags` column
+  joins when `tag_link` does (M2).
+- `pattern_fts(brand, number, name, category, notes, tags)` — at M2.
 
-`GET /api/search?q=` runs a ranked `MATCH` across both and returns a merged list of hits with
-the entity type, a title, the best snippet, and — for fabric — remaining `length_mm`.
-If FTS5 is unavailable, the fallback is per-column `LIKE` scans with a documented ranking; the
-contract of the endpoint does not change.
+`GET /api/search?q=` runs a ranked `BM25` `MATCH` and returns hits with the entity type, a
+title, the best snippet, and — for fabric — remaining `length_mm`. Free text is tokenised and
+each word is quoted as a prefix term (`"linen"*` joined by `AND`), so user punctuation can never
+be read as FTS5 syntax.
 
 ## 7. Photos and files
 
@@ -256,9 +258,9 @@ the set already proven in `resonate`/`reframe`; exact pins, no floating majors.
 
 | Package | Pin | Licence | Why |
 |---|---|---|---|
-| `hono` | 4.13.13 | MIT | HTTP router, middleware |
-| `@hono/node-server` | 2.1.3 | MIT | Node adapter, `getConnInfo` |
-| `zod` | 4.6.5 | MIT | Request validation → typed handlers |
+| `hono` | 4.13.18 | MIT | HTTP router, middleware |
+| `@hono/node-server` | 2.1.8 | MIT | Node adapter, `getConnInfo` |
+| `zod` | 4.6.7 | MIT | Request validation → typed handlers |
 | `react` / `react-dom` | 19.3.0 | MIT | Client |
 | `vite` | 8.3.2 | MIT | Client build/dev |
 | `@vitejs/plugin-react` | 6.1.2 | MIT | JSX transform |
@@ -271,12 +273,18 @@ the set already proven in `resonate`/`reframe`; exact pins, no floating majors.
 directive, the **EOL and CVE check runs at M1** across this list before any of it is installed;
 Node itself is 26 LTS (verified 2026-11-14). All licences above are compatible with Unlicense.
 
+**M1 outcome.** Installed and `npm audit`-clean. The starting pins were raised to the current
+releases after the audit: `zod` 4.6.5 carried **GHSA-mrhx-c7xc-m3w5** (high, memory exhaustion
+validating oversized constrained collections), and `hono` 4.13.13 carried advisories — both are
+now at the versions above. The client deps (`react`, `react-dom`, `vite`, `@vitejs/plugin-react`)
+land at M5.
+
 ## 11. Delivery plan
 
 | # | Milestone | Done when |
 |---|---|---|
-| M0 | Scaffold | repo, brief, ADR, this doc — **done** |
-| M1 | Store | migrations, repositories, fabrics CRUD API, FTS5 verdict, dep EOL/CVE check |
+| M0 | Scaffold | repo, brief, ADR, design brief, this doc — **done** |
+| M1 | Store | migrations, repositories, fabrics CRUD API, FTS5 verdict, dep EOL/CVE check — **done** |
 | M2 | Patterns + notions | patterns with views and requirements; notions inventory; CRUD APIs |
 | M3 | Projects | projects, allocation, `shortfall.ts` with unit tests |
 | M4 | Auth | setup/login/logout/passphrase/TOTP, sessions, rate limit, guards |
@@ -301,7 +309,6 @@ unauthenticated.
 
 ## 13. Open decisions
 
-- **FTS5 availability** in Node 26's bundled SQLite — decides §6's build versus fallback.
 - **Photos as rows** (BLOB) versus files on disk — leaning rows for one-file backup; confirmed
   only if typical photos keep the DB reasonable.
 - **Pattern PDFs**: link-only in v1 (as above) or store the file.
