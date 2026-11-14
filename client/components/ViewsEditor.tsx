@@ -6,6 +6,14 @@ import type { Pattern, PatternRequirement, PatternView, RequirementRole } from '
 
 const ROLES: readonly RequirementRole[] = ['main', 'lining', 'interfacing', 'other']
 
+/** A number typed into a length field, or null — never NaN sent to the API. */
+const parsedNumber = (value: string): number | null => {
+  const trimmed = value.trim()
+  if (trimmed === '') return null
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 const shownLength = (millimetres: number | null, unit: 'metric' | 'imperial'): string =>
   millimetres === null ? '' : String(fromStored(millimetres, 'fabricLength', unit))
 
@@ -37,8 +45,8 @@ function RequirementRow({
     const nextWidth = overrides.width ?? width
     const nextNote = overrides.note ?? note
 
-    const lengthMm = nextLength.trim() === '' ? null : toStored(Number(nextLength), 'fabricLength', unit)
-    const fabricWidthMm = nextWidth.trim() === '' ? null : toStored(Number(nextWidth), 'fabricWidth', unit)
+    const lengthMm = nextLength.trim() === '' ? null : toStored(parsedNumber(nextLength), 'fabricLength', unit)
+    const fabricWidthMm = nextWidth.trim() === '' ? null : toStored(parsedNumber(nextWidth), 'fabricWidth', unit)
     const trimmedNote = nextNote.trim() === '' ? null : nextNote.trim()
 
     // Nothing moved: do not write, so a blur cannot silently re-round a length.
@@ -165,8 +173,8 @@ function ViewBlock({
   }
 
   const addRequirement = async (): Promise<void> => {
-    const lengthMm = length.trim() === '' ? null : toStored(Number(length), 'fabricLength', unit)
-    const fabricWidthMm = width.trim() === '' ? null : toStored(Number(width), 'fabricWidth', unit)
+    const lengthMm = length.trim() === '' ? null : toStored(parsedNumber(length), 'fabricLength', unit)
+    const fabricWidthMm = width.trim() === '' ? null : toStored(parsedNumber(width), 'fabricWidth', unit)
     setError(null)
     try {
       await api(`/api/patterns/${patternId}/views/${view.id}/requirements`, {

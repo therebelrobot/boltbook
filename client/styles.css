@@ -310,6 +310,10 @@ a.button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.row .meta.tags {
+  color: var(--accent);
+  font-size: 0.75rem;
+}
 .row .right {
   display: block;
   font-variant-numeric: tabular-nums;

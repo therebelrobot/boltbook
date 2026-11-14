@@ -2,7 +2,8 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Sheet } from './Sheet'
 import { TagsField } from './TagsField'
 import { useUnit } from '../unitPreference'
-import { fromStored, toStored, unitLabel } from '../units'
+import { unitLabel } from '../units'
+import { coerceField, displayField, type FormValue } from '../formValues'
 import type { FieldSpec } from '../fields'
 
 interface EntitySheetProps {
@@ -17,47 +18,11 @@ interface EntitySheetProps {
   children?: ReactNode
 }
 
-type FormValue = string | boolean | string[]
-
-/** Length fields show the device's unit, so a stored 2500 mm reads as 2.73 yd. */
-function displayValue(spec: FieldSpec, record: Record<string, unknown> | null, unit: 'metric' | 'imperial'): FormValue {
-  const raw = record?.[spec.name]
-  if (spec.kind === 'boolean') return raw === true
-  if (spec.kind === 'tags') return Array.isArray(raw) ? raw.map(String) : []
-  if (raw === null || raw === undefined) return ''
-  if (spec.unitKind && typeof raw === 'number') {
-    const shown = fromStored(raw, spec.unitKind, unit)
-    return shown === null ? '' : String(shown)
-  }
-  return String(raw)
-}
-
-/**
- * Coerce the form's strings back to what the API expects. A length the user did
- * not touch is sent back exactly as stored, so opening an editor and saving can
- * never quietly move 2500 mm to 2497.
- */
-function coerce(spec: FieldSpec, value: FormValue, record: Record<string, unknown> | null, unit: 'metric' | 'imperial'): unknown {
-  if (spec.kind === 'boolean') return value === true
-  if (spec.kind === 'tags') {
-    return Array.isArray(value) ? value.map((tag) => tag.trim()).filter((tag) => tag !== '') : []
-  }
-  if (typeof value !== 'string' || value.trim() === '') return null
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return null
-  if (spec.unitKind) {
-    const stored = record?.[spec.name]
-    if (typeof stored === 'number' && String(fromStored(stored, spec.unitKind, unit)) === value) return stored
-    return toStored(parsed, spec.unitKind, unit)
-  }
-  return spec.kind === 'number' ? parsed : value.trim()
-}
-
 export function EntitySheet({ title, fields, record, onSave, onDelete, onClose, children }: EntitySheetProps) {
   const { unit } = useUnit()
   const [values, setValues] = useState<Record<string, FormValue>>(() => {
     const initial: Record<string, FormValue> = {}
-    for (const spec of fields) initial[spec.name] = displayValue(spec, record, unit)
+    for (const spec of fields) initial[spec.name] = displayField(spec, record, unit)
     return initial
   })
   const [error, setError] = useState<string | null>(null)
@@ -75,7 +40,7 @@ export function EntitySheet({ title, fields, record, onSave, onDelete, onClose, 
         setError(`${spec.label} is needed.`)
         return
       }
-      payload[spec.name] = coerce(spec, value, record, unit)
+      payload[spec.name] = coerceField(spec, value, record, unit)
     }
 
     setBusy(true)

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { api, uploadPhoto } from '../api'
 import { useCollection } from '../useCollection'
 import { EntitySheet } from '../components/EntitySheet'
@@ -34,10 +34,11 @@ const KINDS: readonly KindConfig[] = [
 const text = (value: unknown): string | null => (value === null || value === undefined || value === '' ? null : String(value))
 const number = (value: unknown): number | null => (value === null || value === undefined || value === '' ? null : Number(value))
 
-/** Tags ride at the end of the subtitle as #hashtags — compact in a row. */
-function withTags(parts: Array<string | null | undefined | false>, item: Record_): string {
+/** Tags get their own line: in the subtitle they crowd out the fields you scan for. */
+function TagLine({ item }: { item: Record_ }) {
   const tags = Array.isArray(item.tags) ? (item.tags as string[]) : []
-  return joinMeta([...parts, tags.length > 0 ? tags.map((tag) => `#${tag}`).join(' ') : null]) || 'No details yet'
+  if (tags.length === 0) return null
+  return <span className="meta tags">{tags.map((tag) => `#${tag}`).join(' ')}</span>
 }
 
 function RowThumb({ photo, fabricId, label }: { photo: FabricPhoto | undefined; fabricId: string; label: string }) {
@@ -72,7 +73,8 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
         <RowThumb photo={photos[0]} fabricId={String(item.id)} label={name} />
         <span className="body">
           <span className="title">{name}</span>
-          <span className="meta">{withTags([text(item.fibre), text(item.weight), text(item.colour), text(item.location)], item)}</span>
+          <span className="meta">{joinMeta([text(item.fibre), text(item.weight), text(item.colour), text(item.location)]) || 'No details yet'}</span>
+          <TagLine item={item} />
           <Meter remaining={number(item.lengthMm)} original={number(item.originalLengthMm)} />
         </span>
         <span className="right">
@@ -91,7 +93,8 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
         </span>
         <span className="body">
           <span className="title">{name}</span>
-          <span className="meta">{withTags([text(item.brand), text(item.fibre), text(item.colour), text(item.location)], item)}</span>
+          <span className="meta">{joinMeta([text(item.brand), text(item.fibre), text(item.colour), text(item.location)]) || 'No details yet'}</span>
+          <TagLine item={item} />
         </span>
         <span className="right">{formatStored(number(item.lengthM), 'threadLength', unit)}</span>
       </button>
@@ -103,7 +106,8 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
       <button type="button" className="row" onClick={onOpen}>
         <span className="body">
           <span className="title">{name}</span>
-          <span className="meta">{withTags([text(item.kind), text(item.colour), text(item.location), text(item.spec)], item)}</span>
+          <span className="meta">{joinMeta([text(item.kind), text(item.colour), text(item.location), text(item.spec)]) || 'No details yet'}</span>
+          <TagLine item={item} />
         </span>
         <span className="right">{formatQuantity(number(item.quantity), text(item.unit))}</span>
       </button>
@@ -114,7 +118,8 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
     <button type="button" className="row" onClick={onOpen}>
       <span className="body">
         <span className="title">{name}</span>
-        <span className="meta">{withTags([text(item.category)?.replace('_', ' '), text(item.brand), text(item.spec), text(item.location)], item)}</span>
+        <span className="meta">{joinMeta([text(item.category)?.replace('_', ' '), text(item.brand), text(item.spec), text(item.location)]) || 'No details yet'}</span>
+        <TagLine item={item} />
         {item.needsAttention === true && <span className="warn-line">Needs attention</span>}
       </span>
       <span className="right">{formatQuantity(number(item.quantity))}</span>
@@ -142,13 +147,49 @@ export function StashScreen() {
   const toast = useToast()
   const [sheet, setSheet] = useState<{ mode: 'create' } | { mode: 'edit'; id: string } | null>(null)
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  // Read at file-arrival time, so the input does not need to be re-rendered per target.
+  const photoTargetRef = useRef<string | null>(null)
   const { unit } = useUnit()
 
   const record = sheet?.mode === 'edit' ? items?.find((item) => item.id === sheet.id) ?? null : null
 
-  const openCreate = (): void => {
+  /**
+   * Open the camera. The click must happen inside a real user gesture — iOS
+   * Safari refuses a programmatic click on a file input without user
+   * activation, which is why this is called from the tap and not from an effect.
+   */
+  const requestPhoto = (fabricId: string | null): void => {
+    photoTargetRef.current = fabricId
+    setPhotoError(null)
+    photoInputRef.current?.click()
+  }
+
+  const onPhotoChosen = async (file: File | null): Promise<void> => {
+    if (!file) return
+    const target = photoTargetRef.current
+    if (!target) {
+      // Creating: hold it until the fabric exists to attach it to.
+      setPendingPhoto(file)
+      return
+    }
+    setPhotoError(null)
+    try {
+      const prepared = await preparePhoto(file)
+      await uploadPhoto(target, prepared.blob, prepared.widthPx, prepared.heightPx)
+      await reload()
+    } catch (caught) {
+      setPhotoError(caught instanceof Error ? caught.message : 'Could not add the photo.')
+    }
+  }
+
+  const openCreate = (withCamera: boolean): void => {
     setPendingPhoto(null)
+    setPhotoError(null)
     setSheet({ mode: 'create' })
+    // Camera-first: the fabric form opens *with* the camera, from this same tap.
+    if (withCamera) requestPhoto(null)
   }
 
   const save = async (values: Record_): Promise<void> => {
@@ -229,7 +270,7 @@ export function StashScreen() {
       ) : items.length === 0 ? (
         <div className="empty">
           <p>Nothing in the {config.label.toLowerCase()} yet.</p>
-          <button type="button" className="button primary" onClick={openCreate}>
+          <button type="button" className="button primary" onClick={() => openCreate(kind === 'fabric')}>
             Add the first one
           </button>
         </div>
@@ -242,7 +283,7 @@ export function StashScreen() {
       )}
 
       {items !== null && items.length > 0 && (
-        <button type="button" className="fab" onClick={openCreate}>
+        <button type="button" className="fab" onClick={() => openCreate(kind === 'fabric')}>
           Add {config.label.toLowerCase()}
         </button>
       )}
@@ -267,11 +308,25 @@ export function StashScreen() {
               pendingFile={pendingPhoto}
               onPendingFile={setPendingPhoto}
               onChanged={() => void reload()}
-              autoOpenCamera={sheet.mode === 'create'}
+              onRequestPhoto={requestPhoto}
             />
           )}
+          {kind === 'fabric' && photoError && <p className="error">{photoError}</p>}
         </EntitySheet>
       )}
+
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null
+          event.target.value = ''
+          void onPhotoChosen(file)
+        }}
+      />
     </>
   )
 }

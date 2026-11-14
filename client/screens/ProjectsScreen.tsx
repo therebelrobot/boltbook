@@ -91,7 +91,13 @@ function AllocationEditor({ project, onChanged }: { project: Project; onChanged:
     }
   }
 
-  const toNumberOrNull = (value: string): number | null => (value.trim() === '' ? null : Number(value))
+  /** A number typed into an allocation, or null — never NaN sent to the API. */
+  const toNumberOrNull = (value: string): number | null => {
+    const trimmed = value.trim()
+    if (trimmed === '') return null
+    const parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? parsed : null
+  }
 
   const add = (kind: 'fabrics' | 'threads' | 'notions'): void => {
     const id = choice[kind === 'fabrics' ? 'fabric' : kind === 'threads' ? 'thread' : 'notion']
