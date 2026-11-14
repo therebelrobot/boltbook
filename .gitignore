@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.build/
+*.local
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.playwright-cli/
+
+# Local data — the stash and the library live on the box, never in the repo.
+data/
+*.sqlite
+*.sqlite3

@@ -1,0 +1,11 @@
+{
+  "name": "boltbook",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted fabric-stash and sewing-pattern library — inventory the fabric, patterns and notions you own, and manage the patterns you already have. Local-first, no account; the companion to dressform.",
+  "license": "Unlicense",
+  "engines": {
+    "node": ">=26.13.1"
+  }
+}
