@@ -11,7 +11,7 @@ interface Tool {
 }
 
 test('create and read back a tool', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   const created = await app.request(
     '/api/tools',
     json({ name: 'Rotary cutter', category: 'cutting', brand: 'Olfa', spec: '45mm', quantity: 1 }),
@@ -23,13 +23,13 @@ test('create and read back a tool', async () => {
 })
 
 test('a tool needs a name and a known category', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   assert.equal((await app.request('/api/tools', json({ name: '' }))).status, 400)
   assert.equal((await app.request('/api/tools', json({ name: 'Awl', category: 'sorcery' }))).status, 400)
 })
 
 test('needs-attention round-trips and filters', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   await app.request('/api/tools', json({ name: 'Denim needles', category: 'needles_pins', needsAttention: true }))
   await app.request('/api/tools', json({ name: 'Iron', category: 'pressing' }))
 
@@ -39,12 +39,12 @@ test('needs-attention round-trips and filters', async () => {
 })
 
 test('a bad needsAttention value is refused', async () => {
-  const response = await freshApp().request('/api/tools?needsAttention=maybe')
-  assert.equal(response.status, 400)
+  const app = await freshApp()
+  assert.equal((await app.request('/api/tools?needsAttention=maybe')).status, 400)
 })
 
 test('filters narrow by category', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   await app.request('/api/tools', json({ name: 'Ruler', category: 'measuring' }))
   await app.request('/api/tools', json({ name: 'Shears', category: 'cutting' }))
 
@@ -53,11 +53,15 @@ test('filters narrow by category', async () => {
 })
 
 test('replace and delete a tool', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   const tool = await readJson<Tool>(await app.request('/api/tools', json({ name: 'Ruler', category: 'measuring' })))
   const updated = await app.request(
     `/api/tools/${tool.id}`,
-    { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Ruler', category: 'measuring', quantity: 2 }) },
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Ruler', category: 'measuring', quantity: 2 }),
+    },
   )
   assert.equal((await readJson<Tool>(updated)).quantity, 2)
   assert.equal((await app.request(`/api/tools/${tool.id}`, { method: 'DELETE' })).status, 200)

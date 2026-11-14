@@ -1,8 +1,14 @@
 import { Hono, type Context } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import { getConnInfo } from '@hono/node-server/conninfo'
 import { z } from 'zod'
 import type { Database } from './database'
 import type { ServerConfig } from './config'
+import { AccountService } from './auth'
+import { AuditLog } from './audit'
+import { SessionStore } from './sessions'
+import { UnlockRateLimiter } from './rateLimiter'
 import { FabricRepository, assertFabricInvariant } from './repositories/fabrics'
 import { PatternRepository } from './repositories/patterns'
 import { NotionRepository } from './repositories/notions'
@@ -10,19 +16,26 @@ import { ThreadRepository, assertThreadInvariant } from './repositories/threads'
 import { ToolRepository } from './repositories/tools'
 import { ProjectRepository } from './repositories/projects'
 import { searchAll } from './repositories/search'
+import { buildOtpauthUri } from './crypto/totp'
 import {
   allocationsInputSchema,
   fabricInputSchema,
+  loginRequestSchema,
   notionInputSchema,
+  passphraseChangeRequestSchema,
+  passphraseConfirmationSchema,
   patternInputSchema,
   patternRequirementInputSchema,
   patternViewInputSchema,
   projectInputSchema,
+  setupRequestSchema,
   threadInputSchema,
   toolInputSchema,
+  totpConfirmRequestSchema,
 } from './schemas'
-import { RecordConflictError, RecordNotFoundError, RecordValidationError } from './errors'
+import { AuthError, RecordConflictError, RecordNotFoundError, RecordValidationError } from './errors'
 import type {
+  AuthStatus,
   FabricFilters,
   NotionFilters,
   NotionKind,
@@ -51,19 +64,34 @@ const CONTENT_SECURITY_POLICY = [
   "frame-ancestors 'none'",
 ].join('; ')
 
+/** Every state-changing request must carry this; browsers won't send it cross-site without a preflight we never grant. */
+export const REQUIRED_REQUEST_HEADER = 'x-boltbook-request'
+
 const PATTERN_FORMATS: readonly PatternFormat[] = ['envelope', 'pdf', 'book', 'other']
 const NOTION_KINDS: readonly NotionKind[] = ['button', 'zipper', 'interfacing', 'elastic', 'trim', 'other']
 const TOOL_CATEGORIES: readonly ToolCategory[] = ['cutting', 'measuring', 'pressing', 'machine', 'marking', 'needles_pins', 'other']
 const PROJECT_STATUSES: readonly ProjectStatus[] = ['planned', 'cutting', 'sewing', 'done', 'abandoned']
 
+const STATUS_BY_AUTH_ERROR = {
+  already_claimed: 409,
+  not_claimed: 409,
+  wrong_setup_token: 401,
+  wrong_credentials: 401,
+  totp_required: 401,
+  weak_passphrase: 400,
+  totp_not_pending: 409,
+  totp_invalid: 400,
+  not_signed_in: 401,
+} as const
+
 export interface ApplicationDependencies {
   database: Database
-  config?: ServerConfig
+  config: ServerConfig
   currentTimeMilliseconds?: () => number
 }
 
 export function createApplication(dependencies: ApplicationDependencies) {
-  const { database } = dependencies
+  const { database, config } = dependencies
   const currentTimeMilliseconds = dependencies.currentTimeMilliseconds ?? Date.now
   const nowIso = () => new Date(currentTimeMilliseconds()).toISOString()
 
@@ -73,7 +101,62 @@ export function createApplication(dependencies: ApplicationDependencies) {
   const threads = new ThreadRepository(database)
   const tools = new ToolRepository(database)
   const projects = new ProjectRepository(database)
+  const account = new AccountService(database, config.scryptParameters, currentTimeMilliseconds)
+  const sessions = new SessionStore(
+    config.sessionIdleMinutes * 60_000,
+    config.sessionMaxHours * 3_600_000,
+    currentTimeMilliseconds,
+  )
+  const unlockRateLimiter = new UnlockRateLimiter(currentTimeMilliseconds)
+  const auditLog = new AuditLog(database)
+
+  // __Host- cookies must be Secure, Path=/ and have no Domain.
+  const sessionCookieName = config.cookieSecure ? '__Host-boltbook_session' : 'boltbook_session'
+
   const app = new Hono()
+
+  // ---------- helpers ----------
+
+  const clientIpAddress = (context: Context): string => {
+    if (config.trustProxy) {
+      // Take the hop our trusted proxy appended (rightmost), not the client-supplied leftmost one.
+      const forwardedFor = context.req.header('x-forwarded-for')
+      const proxyAppendedAddress = forwardedFor?.split(',').map((part) => part.trim()).filter(Boolean).at(-1)
+      if (proxyAppendedAddress) return proxyAppendedAddress
+    }
+    try {
+      return getConnInfo(context).remote.address ?? 'unknown'
+    } catch {
+      return 'unknown'
+    }
+  }
+
+  const audit = (context: Context, event: string): void =>
+    auditLog.record(event, clientIpAddress(context), context.req.header('user-agent') ?? '', nowIso())
+
+  const startSession = (context: Context): void => {
+    const { sessionToken } = sessions.create()
+    setCookie(context, sessionCookieName, sessionToken, {
+      httpOnly: true,
+      secure: config.cookieSecure,
+      sameSite: 'Strict',
+      path: '/',
+      maxAge: config.sessionMaxHours * 3600,
+    })
+  }
+
+  const endSession = (context: Context): void => {
+    sessions.destroy(getCookie(context, sessionCookieName))
+    deleteCookie(context, sessionCookieName, { path: '/', secure: config.cookieSecure })
+  }
+
+  const rejectIfRateLimited = (context: Context): Response | null => {
+    const retryAfterMilliseconds = unlockRateLimiter.retryAfterMilliseconds(clientIpAddress(context))
+    if (retryAfterMilliseconds <= 0) return null
+    const retryAfterSeconds = Math.ceil(retryAfterMilliseconds / 1000)
+    context.header('Retry-After', String(retryAfterSeconds))
+    return context.json({ error: 'rate_limited', message: 'Too many attempts. Try again shortly.', retryAfterSeconds }, 429)
+  }
 
   const readJsonBody = async <Schema extends z.ZodType>(context: Context, schema: Schema): Promise<z.infer<Schema>> =>
     schema.parse(await context.req.json().catch(() => ({})))
@@ -96,17 +179,93 @@ export function createApplication(dependencies: ApplicationDependencies) {
     context.header('Cross-Origin-Opener-Policy', 'same-origin')
     context.header('Cross-Origin-Resource-Policy', 'same-origin')
     context.header('X-Robots-Tag', 'noindex, nofollow, noarchive')
+    if (config.cookieSecure) context.header('Strict-Transport-Security', 'max-age=31536000')
   })
 
-  // ---------- API ----------
+  // ---------- API guards ----------
 
   app.use('/api/*', bodyLimit({ maxSize: 8 * 1024 * 1024 }))
   app.use('/api/*', async (context, next) => {
     context.header('Cache-Control', 'no-store')
+    context.header('Pragma', 'no-cache')
+    const method = context.req.method
+    if (method !== 'GET' && method !== 'HEAD') {
+      if (context.req.header(REQUIRED_REQUEST_HEADER) !== '1') {
+        return context.json({ error: 'forbidden', message: 'Missing request header.' }, 403)
+      }
+      const originHeader = context.req.header('origin')
+      if (originHeader) {
+        const expectedOrigin = config.publicOrigin ?? `${config.cookieSecure ? 'https' : 'http'}://${context.req.header('host')}`
+        if (originHeader !== expectedOrigin) {
+          return context.json({ error: 'forbidden', message: 'Cross-origin request refused.' }, 403)
+        }
+      }
+    }
     await next()
   })
 
+  // ---------- public API ----------
+
   app.get('/api/status', (context) => {
+    const status: AuthStatus = {
+      claimed: account.isInitialized(),
+      signedIn: sessions.touch(getCookie(context, sessionCookieName)) !== null,
+      totpEnabled: account.isTotpEnabled(),
+      sessionIdleMinutes: config.sessionIdleMinutes,
+    }
+    return context.json(status)
+  })
+
+  app.post('/api/setup', async (context) => {
+    const rateLimitedResponse = rejectIfRateLimited(context)
+    if (rateLimitedResponse) return rateLimitedResponse
+    const setupRequest = await readJsonBody(context, setupRequestSchema)
+    if (account.isInitialized()) throw new AuthError('already_claimed', 'This instance is already set up.')
+    if (setupRequest.setupToken.trim() !== config.setupToken) {
+      unlockRateLimiter.recordFailure(clientIpAddress(context))
+      throw new AuthError('wrong_setup_token', 'That setup token is not right. Check the server log.')
+    }
+    await account.initialize(setupRequest.passphrase)
+    audit(context, 'instance_claimed')
+    startSession(context)
+    return context.json({ ok: true }, 201)
+  })
+
+  app.post('/api/login', async (context) => {
+    const rateLimitedResponse = rejectIfRateLimited(context)
+    if (rateLimitedResponse) return rateLimitedResponse
+    const loginRequest = await readJsonBody(context, loginRequestSchema)
+    try {
+      await account.unlock(loginRequest.passphrase, loginRequest.totpCode)
+      unlockRateLimiter.recordSuccess(clientIpAddress(context))
+      audit(context, 'signed_in')
+      startSession(context)
+      return context.json({ ok: true })
+    } catch (error) {
+      if (error instanceof AuthError && (error.code === 'wrong_credentials' || error.code === 'totp_required')) {
+        unlockRateLimiter.recordFailure(clientIpAddress(context))
+        audit(context, 'sign_in_failed')
+      }
+      throw error
+    }
+  })
+
+  app.post('/api/logout', (context) => {
+    if (sessions.touch(getCookie(context, sessionCookieName))) audit(context, 'signed_out')
+    endSession(context)
+    return context.json({ ok: true })
+  })
+
+  // ---------- everything below requires a signed-in session ----------
+
+  app.use('/api/*', async (context, next) => {
+    if (sessions.touch(getCookie(context, sessionCookieName)) === null) {
+      throw new AuthError('not_signed_in', 'Sign in first.')
+    }
+    await next()
+  })
+
+  app.get('/api/summary', (context) => {
     const status: Status = {
       ok: true,
       fabricCount: fabrics.count(),
@@ -117,6 +276,65 @@ export function createApplication(dependencies: ApplicationDependencies) {
       projectCount: projects.count(),
     }
     return context.json(status)
+  })
+
+  app.get('/api/audit', (context) => context.json(auditLog.listRecent(100)))
+
+  app.post('/api/passphrase', async (context) => {
+    const rateLimitedResponse = rejectIfRateLimited(context)
+    if (rateLimitedResponse) return rateLimitedResponse
+    const changeRequest = await readJsonBody(context, passphraseChangeRequestSchema)
+    try {
+      await account.changePassphrase(changeRequest.currentPassphrase, changeRequest.newPassphrase)
+    } catch (error) {
+      if (error instanceof AuthError && error.code === 'wrong_credentials') unlockRateLimiter.recordFailure(clientIpAddress(context))
+      throw error
+    }
+    // Sign out every other device; keep this one.
+    sessions.destroyAll()
+    audit(context, 'passphrase_changed')
+    startSession(context)
+    return context.json({ ok: true })
+  })
+
+  app.post('/api/totp/begin', (context) => {
+    const session = sessions.touch(getCookie(context, sessionCookieName))
+    const { secret, secretBase32 } = account.createPendingTotpSecret()
+    if (session) {
+      session.pendingTotpSecret?.fill(0)
+      session.pendingTotpSecret = secret
+    } else {
+      secret.fill(0)
+    }
+    return context.json({ secretBase32, otpauthUri: buildOtpauthUri(secretBase32, 'boltbook', 'boltbook') })
+  })
+
+  app.post('/api/totp/confirm', async (context) => {
+    const session = sessions.touch(getCookie(context, sessionCookieName))
+    const { code } = await readJsonBody(context, totpConfirmRequestSchema)
+    if (!session?.pendingTotpSecret) throw new AuthError('totp_not_pending', 'Start setup again to get a new secret.')
+    account.confirmTotpEnrollment(session.pendingTotpSecret, code)
+    session.pendingTotpSecret.fill(0)
+    session.pendingTotpSecret = null
+    audit(context, 'authenticator_enabled')
+    return context.json({ ok: true })
+  })
+
+  app.post('/api/totp/disable', async (context) => {
+    const rateLimitedResponse = rejectIfRateLimited(context)
+    if (rateLimitedResponse) return rateLimitedResponse
+    const confirmation = await readJsonBody(context, passphraseConfirmationSchema)
+    try {
+      if (!(await account.verifyPassphrase(confirmation.passphrase))) {
+        throw new AuthError('wrong_credentials', 'That passphrase is not right.')
+      }
+    } catch (error) {
+      if (error instanceof AuthError && error.code === 'wrong_credentials') unlockRateLimiter.recordFailure(clientIpAddress(context))
+      throw error
+    }
+    account.disableTotp()
+    audit(context, 'authenticator_disabled')
+    return context.json({ ok: true })
   })
 
   // Fabric
@@ -412,6 +630,9 @@ export function createApplication(dependencies: ApplicationDependencies) {
   // ---------- errors ----------
 
   app.onError((error, context) => {
+    if (error instanceof AuthError) {
+      return context.json({ error: error.code, message: error.message }, STATUS_BY_AUTH_ERROR[error.code])
+    }
     if (error instanceof RecordNotFoundError) return context.json({ error: 'not_found', message: error.message }, 404)
     if (error instanceof RecordConflictError) return context.json({ error: 'conflict', message: error.message }, 409)
     if (error instanceof RecordValidationError) return context.json({ error: 'invalid_request', message: error.message }, 400)
@@ -423,5 +644,5 @@ export function createApplication(dependencies: ApplicationDependencies) {
     return context.json({ error: 'server_error', message: 'Something went wrong on the server.' }, 500)
   })
 
-  return { app, fabrics, patterns, notions, threads, tools, projects }
+  return { app, account, sessions, fabrics, patterns, notions, threads, tools, projects }
 }

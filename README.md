@@ -27,12 +27,15 @@ machine, without the account or the cloud.
 
 ## Status
 
-**M1–M3 landed.** The backend is complete for v1's scope: fabrics, patterns (with views and
-per-view yardage requirements), notions, thread and tools, each with full CRUD, plus FTS5 search
-across all four indexed entities. Projects allocate fabric, thread and notions, and the shortfall
-readout reports what is short (remaining minus what other live projects reserve) and what is too
-narrow. `server/` + `shared/model.ts` + 59 passing tests; `npm audit` clean on Node 26.13.1.
-Auth (M4) and the client (M5) are next. The client is mobile-first.
+**M1–M4 landed.** The backend is complete: fabrics, patterns (with views and per-view yardage
+requirements), notions, thread and tools, each with full CRUD, plus FTS5 search across all four
+indexed entities. Projects allocate fabric, thread and notions, and the shortfall readout reports
+what is short (remaining minus what other live projects reserve) and what is too narrow.
+
+Access is the house single-user model minus the vault: a one-time setup token claims the
+instance, then a passphrase (optional TOTP) with a `__Host-` session cookie, rate limiting, an
+audit log, and a `reset-passphrase` script. 71 passing tests; `npm audit` clean on Node 26.13.1.
+The client (M5) and fabric photos are next. The client is mobile-first.
 
 ## License
 

@@ -13,7 +13,8 @@
     "build": "esbuild server/main.ts --bundle --platform=node --format=esm --target=node24 --packages=bundle --banner:js=\"import { createRequire as __boltbookCreateRequire } from 'node:module'; const require = __boltbookCreateRequire(import.meta.url);\" --outfile=dist/server.mjs",
     "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "reset-passphrase": "node --import tsx scripts/reset-passphrase.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.8",

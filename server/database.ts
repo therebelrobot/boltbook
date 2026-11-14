@@ -7,9 +7,9 @@ import { DatabaseSync } from 'node:sqlite'
  * says how many have run. Plaintext throughout — see docs/adr/0001.
  *
  * 1 — fabric (+ FTS5).  2 — pattern, views, requirements, notion (+ FTS5).
- * 3 — thread, tool (+ FTS5).
- * Projects, tags, the account and the audit log are later migrations; see
- * docs/technical-design.md §3.
+ * 3 — thread, tool (+ FTS5).  4 — project and its allocations.
+ * 5 — account and audit_log.
+ * Tags are a later migration; see docs/technical-design.md §3.
  */
 const MIGRATIONS: string[] = [
   `CREATE TABLE fabric (
@@ -239,6 +239,26 @@ const MIGRATIONS: string[] = [
      notion_id    TEXT NOT NULL REFERENCES notion(id) ON DELETE CASCADE,
      quantity_used REAL,
      PRIMARY KEY (project_id, notion_id)
+   );`,
+
+  `CREATE TABLE account (
+     singleton_id              INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+     created_at                TEXT NOT NULL,
+     scrypt_n                  INTEGER NOT NULL,
+     scrypt_r                  INTEGER NOT NULL,
+     scrypt_p                  INTEGER NOT NULL,
+     passphrase_salt           BLOB NOT NULL,
+     passphrase_hash           BLOB NOT NULL,
+     totp_secret               TEXT,
+     totp_last_accepted_counter INTEGER
+   );
+
+   CREATE TABLE audit_log (
+     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+     at         TEXT NOT NULL,
+     event      TEXT NOT NULL,
+     ip_address TEXT NOT NULL,
+     user_agent TEXT NOT NULL
    );`,
 ]
 

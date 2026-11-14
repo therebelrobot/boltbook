@@ -11,7 +11,7 @@ interface Thread {
 }
 
 test('create and read back a thread with its own fields', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   const created = await app.request(
     '/api/threads',
     json({
@@ -35,19 +35,18 @@ test('create and read back a thread with its own fields', async () => {
 })
 
 test('a thread needs a name', async () => {
-  assert.equal((await freshApp().request('/api/threads', json({ name: '' }))).status, 400)
+  const app = await freshApp()
+  assert.equal((await app.request('/api/threads', json({ name: '' }))).status, 400)
 })
 
 test('remaining thread length cannot exceed the original', async () => {
-  const response = await freshApp().request(
-    '/api/threads',
-    json({ name: 'Silk', lengthM: 2000, originalLengthM: 500 }),
-  )
+  const app = await freshApp()
+  const response = await app.request('/api/threads', json({ name: 'Silk', lengthM: 2000, originalLengthM: 500 }))
   assert.equal(response.status, 400)
 })
 
 test('filters narrow thread by colour and fibre', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   await app.request('/api/threads', json({ name: 'Mara 120', colour: 'navy', fibre: 'polyester' }))
   await app.request('/api/threads', json({ name: 'Silk 50', colour: 'cream', fibre: 'silk' }))
 
@@ -59,7 +58,7 @@ test('filters narrow thread by colour and fibre', async () => {
 })
 
 test('replace and delete a thread', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   const thread = await readJson<Thread>(await app.request('/api/threads', json({ name: 'Mara 120', spools: 3 })))
   const updated = await app.request(
     `/api/threads/${thread.id}`,

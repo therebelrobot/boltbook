@@ -127,10 +127,10 @@ tag(id PK, name UNIQUE)
 tag_link(tag_id FK, entity_type, entity_id, PRIMARY KEY(tag_id, entity_type, entity_id))
          -- entity_type: fabric | pattern | project
 
-account(singleton_id PK CHECK(=1), created_at, scrypt_n, scrypt_r, scrypt_p,
+account(singleton_id INTEGER PK CHECK(=1), created_at, scrypt_n, scrypt_r, scrypt_p,
         passphrase_salt BLOB, passphrase_hash BLOB,
-        totp_secret TEXT NULL, totp_last_accepted_counter INTEGER,
-        recovery_salt BLOB, recovery_hash BLOB)
+        totp_secret TEXT NULL, totp_last_accepted_counter INTEGER)
+        -- no recovery columns and no wrapped key: nothing is encrypted (adr/0001)
 
 audit_log(id INTEGER PK AUTOINCREMENT, at, event, ip_address, user_agent)
 ```
@@ -143,7 +143,7 @@ Indexes: `fabric(fibre)`, `fabric(location)`, `pattern(brand)`, `project(status)
 
 ## 4. Identity, auth, access
 
-Single user. The house auth model, minus the vault:
+Single user. The house auth model, minus the vault. **Built at M4.**
 
 - **Claim.** `POST /api/setup` succeeds once. It is refused while an `account` row exists. It
   requires `setupToken` to equal `config.setupToken` (`BOLTBOOK_SETUP_TOKEN`; generated from
@@ -159,10 +159,13 @@ Single user. The house auth model, minus the vault:
 - **State-changing guard.** Every non-GET `/api/*` request must carry `x-boltbook-request: 1`
   and, if `Origin` is present, it must equal the configured public origin. A browser cannot send
   that header cross-site without a preflight the server never grants.
-- **Rate limit.** Failed unlocks per IP, with `Retry-After`.
-- **Lost passphrase.** No recovery code (there is no key to recover). The documented reset is a
-  maintenance action: stop the container, clear the `account` passphrase/TOTP columns, restart,
-  re-claim with the setup token. Data is untouched.
+- **Rate limit.** Failed unlocks per IP, with `Retry-After`; a burst across many IPs
+  locks everyone out for a window.
+- **Audit.** `audit_log` records the security events — claimed, signed in, sign-in failed,
+  signed out, passphrase changed, authenticator enabled/disabled — read at `GET /api/audit`.
+- **Lost passphrase.** No recovery code (there is no key to recover). The documented reset is
+  `npm run reset-passphrase -- --yes`, which clears the `account` row on the database file;
+  restart and re-claim with the setup token. The records are untouched.
 
 Global hardening headers (CSP, `X-Frame-Options: DENY`, `no-referrer`, HSTS when secure,
 `X-Robots-Tag: noindex`) are set on every response, as in `reframe`.
@@ -305,7 +308,7 @@ land at M5.
 | M2 | Patterns + notions | patterns with views and requirements; notions inventory; CRUD APIs — **done** |
 | M2b | Thread + tools | thread and tool tables and APIs, by request — **done** |
 | M3 | Projects | projects, allocation across fabric/thread/notions, `shortfall.ts` with unit tests — **done** |
-| M4 | Auth | setup/login/logout/passphrase/TOTP, sessions, rate limit, guards |
+| M4 | Auth | setup/login/logout/passphrase/TOTP, sessions, rate limit, guards — **done** |
 | M5 | Client | Stash, Patterns, Notions, Projects, Search, Settings, Access screens |
 | M6 | Export + audit | zip export, audit log, backup doc |
 | M7 | Ship | Dockerfile (multi-stage), compose, reverse proxy notes, deploy |

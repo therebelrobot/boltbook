@@ -257,6 +257,14 @@ export interface SearchHit {
   lengthMm: number | null
 }
 
+export interface AuthStatus {
+  /** True once the instance has been claimed (an account exists). */
+  claimed: boolean
+  signedIn: boolean
+  totpEnabled: boolean
+  sessionIdleMinutes: number
+}
+
 export interface Status {
   ok: true
   fabricCount: number

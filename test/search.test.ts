@@ -15,7 +15,7 @@ test('buildMatchQuery quotes every term as a prefix', () => {
 })
 
 test('search finds a fabric by a field and by a prefix', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   await app.request('/api/fabrics', json({ name: 'Chambray shirting', fibre: 'cotton', notes: 'lightweight for a shirt' }))
   await app.request('/api/fabrics', json({ name: 'Wool coating', fibre: 'wool' }))
 
@@ -30,26 +30,25 @@ test('search finds a fabric by a field and by a prefix', async () => {
 })
 
 test('search finds patterns too, and tags the hit type', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   await app.request('/api/patterns', json({ name: 'Archer Button-Up', brand: 'Grainline', category: 'shirts' }))
   await app.request('/api/fabrics', json({ name: 'Shirting cotton', fibre: 'cotton' }))
 
   const hits = await readJson<Hit[]>(await app.request('/api/search?q=shirt'))
   const types = new Set(hits.map((h) => h.type))
-  const titles = hits.map((h) => h.title).sort()
-  assert.deepEqual(titles, ['Archer Button-Up', 'Shirting cotton'])
+  assert.deepEqual(hits.map((h) => h.title).sort(), ['Archer Button-Up', 'Shirting cotton'])
   assert.deepEqual([...types].sort(), ['fabric', 'pattern'])
 })
 
 test('search finds a pattern by its brand', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   await app.request('/api/patterns', json({ name: 'Ginger Jeans', brand: 'Closet Core' }))
   const hits = await readJson<Hit[]>(await app.request('/api/search?q=closet'))
   assert.deepEqual(hits.map((h) => h.title), ['Ginger Jeans'])
 })
 
 test('search finds thread by colour and tools by name', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   await app.request('/api/threads', json({ name: 'Mara 120', colour: 'ecru', brand: 'Gütermann' }))
   await app.request('/api/tools', json({ name: 'Rotary cutter', category: 'cutting', brand: 'Olfa' }))
 
@@ -63,7 +62,7 @@ test('search finds thread by colour and tools by name', async () => {
 })
 
 test('a search query full of punctuation does not throw', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   await app.request('/api/fabrics', json({ name: 'Ticking stripe' }))
   const response = await app.request(`/api/search?q=${encodeURIComponent('"weird" * AND (')}`)
   assert.equal(response.status, 200)

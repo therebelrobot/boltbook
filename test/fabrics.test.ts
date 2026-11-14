@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { freshApp, json, readJson } from './helpers'
 
 test('an empty instance reports zero of everything', async () => {
-  const response = await freshApp().request('/api/status')
+  const app = await freshApp()
+  const response = await app.request('/api/summary')
   assert.equal(response.status, 200)
   assert.deepEqual(await response.json(), {
     ok: true,
@@ -17,7 +18,7 @@ test('an empty instance reports zero of everything', async () => {
 })
 
 test('create, list and fetch a fabric', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   const created = await app.request(
     '/api/fabrics',
     json({ name: 'Washed linen', fibre: 'linen', lengthMm: 3000, originalLengthMm: 3000, location: 'Bin A' }),
@@ -36,24 +37,21 @@ test('create, list and fetch a fabric', async () => {
 })
 
 test('a fabric with no name is refused', async () => {
-  const response = await freshApp().request('/api/fabrics', json({ name: '' }))
+  const app = await freshApp()
+  const response = await app.request('/api/fabrics', json({ name: '' }))
   assert.equal(response.status, 400)
   assert.equal((await readJson<{ error: string }>(response)).error, 'invalid_request')
 })
 
 test('remaining length cannot exceed original length', async () => {
-  const response = await freshApp().request(
-    '/api/fabrics',
-    json({ name: 'Odd bolt', lengthMm: 5000, originalLengthMm: 3000 }),
-  )
+  const app = await freshApp()
+  const response = await app.request('/api/fabrics', json({ name: 'Odd bolt', lengthMm: 5000, originalLengthMm: 3000 }))
   assert.equal(response.status, 400)
 })
 
 test('replace changes fields and keeps identity', async () => {
-  const app = freshApp()
-  const fabric = await readJson<{ id: string }>(
-    await app.request('/api/fabrics', json({ name: 'Poplin', lengthMm: 2000 })),
-  )
+  const app = await freshApp()
+  const fabric = await readJson<{ id: string }>(await app.request('/api/fabrics', json({ name: 'Poplin', lengthMm: 2000 })))
   const updated = await app.request(
     `/api/fabrics/${fabric.id}`,
     {
@@ -70,7 +68,7 @@ test('replace changes fields and keeps identity', async () => {
 })
 
 test('fetching or replacing a missing fabric is a 404', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   assert.equal((await app.request('/api/fabrics/nope')).status, 404)
   const replaced = await app.request('/api/fabrics/nope', {
     method: 'PUT',
@@ -81,14 +79,14 @@ test('fetching or replacing a missing fabric is a 404', async () => {
 })
 
 test('delete removes the fabric', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   const fabric = await readJson<{ id: string }>(await app.request('/api/fabrics', json({ name: 'Canvas' })))
   assert.equal((await app.request(`/api/fabrics/${fabric.id}`, { method: 'DELETE' })).status, 200)
   assert.equal((await app.request(`/api/fabrics/${fabric.id}`)).status, 404)
 })
 
 test('filters narrow by fibre and by minimum length', async () => {
-  const app = freshApp()
+  const app = await freshApp()
   await app.request('/api/fabrics', json({ name: 'Linen', fibre: 'linen', lengthMm: 3000 }))
   await app.request('/api/fabrics', json({ name: 'Cotton', fibre: 'cotton', lengthMm: 500 }))
 

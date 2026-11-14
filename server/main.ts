@@ -5,13 +5,23 @@ import { createApplication } from './app'
 
 const config = loadConfig()
 const database = openDatabase(config.databaseFilePath)
-const { app } = createApplication({ database, config })
+const { app, sessions, account } = createApplication({ database, config })
+
+// Drop expired sessions even while nobody is asking.
+setInterval(() => sessions.sweepExpired(), 5 * 60_000).unref()
 
 serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
   console.log(`boltbook listening on http://${config.host}:${info.port}`)
   console.log(`data: ${config.databaseFilePath}`)
+  if (!account.isInitialized()) {
+    const origin = config.setupTokenWasGenerated ? 'generated for this run; set BOLTBOOK_SETUP_TOKEN to choose your own' : 'from BOLTBOOK_SETUP_TOKEN'
+    console.log(` Setup token: ${config.setupToken} (${origin})`)
+  }
 })
 
-if (config.host !== '127.0.0.1') {
-  console.warn('WARNING: bound beyond localhost. Auth lands at M4; do not expose this yet.')
+if (!config.cookieSecure) {
+  console.warn('WARNING: BOLTBOOK_COOKIE_SECURE=false. Only do this for local development over plain HTTP.')
+}
+if (config.host !== '127.0.0.1' && config.host !== 'localhost') {
+  console.warn('WARNING: bound beyond localhost. Make sure TLS and the access layer sit in front.')
 }

@@ -125,3 +125,26 @@ export const allocationsInputSchema = z.object({
     .array(z.object({ notionId: z.string().trim().min(1).max(64), quantityUsed: nullable(z.number().min(0).max(1_000_000)) }))
     .default([]),
 })
+
+export const setupRequestSchema = z.object({
+  setupToken: z.string().trim().min(1).max(200),
+  passphrase: z.string().min(1).max(1000),
+})
+
+export const loginRequestSchema = z.object({
+  passphrase: z.string().min(1).max(1000),
+  totpCode: z.string().trim().max(20).optional(),
+})
+
+export const passphraseChangeRequestSchema = z.object({
+  currentPassphrase: z.string().min(1).max(1000),
+  newPassphrase: z.string().min(1).max(1000),
+})
+
+export const passphraseConfirmationSchema = z.object({
+  passphrase: z.string().min(1).max(1000),
+})
+
+export const totpConfirmRequestSchema = z.object({
+  code: z.string().trim().min(1).max(20),
+})
