@@ -18,6 +18,7 @@ import { ProjectRepository } from './repositories/projects'
 import { TagsRepository } from './repositories/tags'
 import { searchAll } from './repositories/search'
 import { buildExportZip } from './export'
+import { importExport } from './import'
 import {
   FABRIC_ALLOCATION_MEASURES,
   FABRIC_MEASURES,
@@ -262,7 +263,9 @@ export function createApplication(dependencies: ApplicationDependencies) {
 
   // ---------- API guards ----------
 
-  app.use('/api/*', bodyLimit({ maxSize: 8 * 1024 * 1024 }))
+  // Generous because an import is one zip of everything; the photo route keeps
+  // its own 8 MB rule, and the import route is guarded by mode=replace.
+  app.use('/api/*', bodyLimit({ maxSize: 64 * 1024 * 1024 }))
   app.use('/api/*', async (context, next) => {
     context.header('Cache-Control', 'no-store')
     context.header('Pragma', 'no-cache')
@@ -366,6 +369,18 @@ export function createApplication(dependencies: ApplicationDependencies) {
     context.header('Content-Type', 'application/zip')
     context.header('Content-Disposition', `attachment; filename="boltbook-${stamp}.zip"`)
     return context.body(new Uint8Array(zip))
+  })
+
+  // Import — restore an export. Replaces every record, so it must be asked for.
+  app.post('/api/import', async (context) => {
+    if (context.req.query('mode') !== 'replace') {
+      throw new RecordValidationError('A restore replaces every record, so it must be asked for: POST with ?mode=replace.')
+    }
+    const zip = Buffer.from(await context.req.arrayBuffer())
+    if (zip.byteLength === 0) throw new RecordValidationError('The upload was empty.')
+    const result = importExport(database, zip)
+    audit(context, 'imported')
+    return context.json({ ok: true, imported: result.tables, photos: result.photoCount })
   })
 
   app.post('/api/passphrase', async (context) => {

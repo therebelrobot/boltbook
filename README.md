@@ -112,6 +112,9 @@ then claim the instance again with the setup token.
 
 - **Settings → Export**, or `GET /api/export`, gives one zip: `boltbook.json` with every record,
   and `photos/` with the image files. Credentials are never in it.
+- **Settings → Restore**, or `POST /api/import?mode=replace`, puts an export back. It replaces
+  every record — tags, views and photos included — so take an export first if you are unsure.
+  Your account and this instance's audit log are left alone.
 - `npm run backup -- ./backups` settles the write-ahead log and copies `boltbook.db`. The copy is
   plaintext by design, so any SQLite tool can read it.
 
@@ -144,6 +147,7 @@ then claim the instance again with the setup token.
 | `docs/technical-design.md` | modules, the data model, the seams, the plan |
 | `docs/design-brief.md` | how the client looks, moves and feels |
 | `docs/deployment.md` | running it, the environment, proxies, backups, upgrades |
+| `docs/v2-plan.md` | what comes after v1: scoped, costed, ordered |
 | `docs/adr/0001-no-encryption-at-rest.md` | the decision, and what it costs |
 
 ## License

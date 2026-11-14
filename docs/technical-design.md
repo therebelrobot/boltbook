@@ -324,6 +324,15 @@ left* always means **remaining minus reserved**.
 - **Backup is a file copy**: `npm run backup -- ./backups` settles the write-ahead log
   (`wal_checkpoint(TRUNCATE)`) and copies `boltbook.db`. Because there is no encryption, the copy
   is readable with any SQLite tool — a deliberate property (ADR 0001), not an oversight.
+- **Restore is `POST /api/import?mode=replace`** (and Settings → Restore). It **replaces every
+  record** — merge was considered and deferred to [v2](v2-plan.md) §10, because a restore should
+  reproduce a known state and a half-merged stash is harder to reason about than a replaced one.
+  Asking for `mode=replace` by name is the guard, so a stray POST cannot wipe a stash.
+  - Two things are deliberately **not** restored: `account` (never exported) and `audit_log` —
+    the log belongs to this instance and should record that an import happened, not be
+    overwritten by another box's history.
+  - The whole restore is one transaction. A malformed export rolls back and changes nothing.
+  - Photo bytes come from the `photos/` entries, matched to their metadata rows by filename.
 
 ## 10. Dependency register
 
@@ -368,6 +377,7 @@ land at M5.
 | M5b | Tags + views editor | tag store, routes, filters and tag search; the pattern views/requirements editor in the client — **done** |
 | M6 | Export + backup | zip export from the API and Settings, `npm run backup` — **done** |
 | M7 | Ship | Dockerfile (multi-stage), compose, CI + GHCR publish workflows, deployment notes — **done** |
+| v2 | Beyond v1 | Shopping list, tag hygiene, project photos, costing, pattern PDFs, labels, tiled printing, imports, OCR — scoped in `v2-plan.md` |
 
 Auth (M4) could land before M1's later parts; the plan keeps it early enough that nothing ships
 unauthenticated.

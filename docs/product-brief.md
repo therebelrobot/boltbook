@@ -121,11 +121,10 @@ Fabric and patterns are both first-class from day one, linked.
 
 ### In, v2
 
-- Pattern envelope/front photo OCR → prefill brand, number, sizes.
-- Tiled PDF print at scale (A4/Letter) from an attached PDF.
-- Shopping list from a project's shortfalls.
-- Barcode/QR labels for storage bins.
-- Import from a Threadloop or Stash Hub export.
+Scoped, costed and ordered in [`v2-plan.md`](v2-plan.md): shopping list from a shortfall, tag
+hygiene, photos on projects, costing, storing pattern PDFs, bin and box labels, tiled PDF
+printing, import from a Threadloop or Stash Hub export, merge import, and pattern capture from a
+photo. Remote access over a VPN is a documentation item; **sync is explicitly not v2**.
 
 ### Out
 

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { api, signOut } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import { api, restoreExport, signOut } from '../api'
 import { Sheet } from '../components/Sheet'
 import { joinMeta } from '../format'
 import { useUnit } from '../unitPreference'
@@ -19,6 +19,7 @@ interface SettingsScreenProps {
 
 export function SettingsScreen({ onClose, onSignedOut }: SettingsScreenProps) {
   const { unit, setUnit } = useUnit()
+  const fileRef = useRef<HTMLInputElement>(null)
   const [summary, setSummary] = useState<Status | null>(null)
   const [audit, setAudit] = useState<AuditEntry[]>([])
   const [secret, setSecret] = useState<string | null>(null)
@@ -80,6 +81,21 @@ export function SettingsScreen({ onClose, onSignedOut }: SettingsScreenProps) {
   const leave = async (): Promise<void> => {
     await signOut()
     onSignedOut()
+  }
+
+  const restore = async (file: File | null): Promise<void> => {
+    if (!file) return
+    if (!window.confirm('Replace every record in this instance with the contents of that export?')) return
+    setError(null)
+    try {
+      const result = await restoreExport(file)
+      const fabrics = result.imported.fabric ?? 0
+      const patterns = result.imported.pattern ?? 0
+      setNote(`Restored ${fabrics} fabric${fabrics === 1 ? '' : 's'}, ${patterns} pattern${patterns === 1 ? '' : 's'} and ${result.photos} photo${result.photos === 1 ? '' : 's'}.`)
+      await refresh()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not restore that export.')
+    }
   }
 
   return (
@@ -171,6 +187,26 @@ export function SettingsScreen({ onClose, onSignedOut }: SettingsScreenProps) {
       <a className="button" href="/api/export" download>
         Download everything (.zip)
       </a>
+
+      <h3 style={{ fontSize: '0.9375rem', marginTop: '1.25rem' }}>Restore</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Replaces every record in this instance with the contents of an export — your tags, views,
+        photos and projects included. Take an export first if you are unsure.
+      </p>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".zip,application/zip"
+        style={{ display: 'none' }}
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null
+          event.target.value = ''
+          void restore(file)
+        }}
+      />
+      <button type="button" className="button danger" onClick={() => fileRef.current?.click()}>
+        Restore from an export…
+      </button>
 
       <h3 style={{ fontSize: '0.9375rem', marginTop: '1.25rem' }}>Recent activity</h3>
       <div className="card">

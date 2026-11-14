@@ -59,3 +59,21 @@ export async function uploadPhoto(fabricId: string, blob: Blob, widthPx: number,
 }
 
 export const photoUrl = (fabricId: string, photoId: string): string => `/api/fabrics/${fabricId}/photos/${photoId}`
+
+export interface RestoreResult {
+  ok: true
+  photos: number
+  imported: Record<string, number>
+}
+
+/** Restore an export. Raw bytes, and the mode that says "replace everything". */
+export async function restoreExport(file: File): Promise<RestoreResult> {
+  const response = await fetch('/api/import?mode=replace', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'x-boltbook-request': '1', 'content-type': 'application/zip' },
+    body: file,
+  })
+  if (!response.ok) throw await toApiError(response)
+  return (await response.json()) as RestoreResult
+}

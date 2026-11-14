@@ -1,4 +1,4 @@
-import { deflateRawSync } from 'node:zlib'
+import { deflateRawSync, inflateRawSync } from 'node:zlib'
 
 /**
  * A minimal ZIP writer — enough for one export, with no dependency.
@@ -103,4 +103,44 @@ export function extensionForContentType(contentType: string): string {
   if (contentType === 'image/png') return 'png'
   if (contentType === 'image/webp') return 'webp'
   return 'jpg'
+}
+
+/** Read a zip we wrote (or any store/deflate zip) into name → bytes. */
+export function readZip(zip: Buffer): Map<string, Buffer> {
+  let endOfCentralDirectory = -1
+  for (let index = zip.length - 22; index >= 0; index -= 1) {
+    if (zip.readUInt32LE(index) === 0x06054b50) {
+      endOfCentralDirectory = index
+      break
+    }
+  }
+  if (endOfCentralDirectory < 0) throw new Error('Not a zip archive.')
+
+  const count = zip.readUInt16LE(endOfCentralDirectory + 10)
+  let offset = zip.readUInt32LE(endOfCentralDirectory + 16)
+  const entries = new Map<string, Buffer>()
+
+  for (let index = 0; index < count; index += 1) {
+    if (zip.readUInt32LE(offset) !== 0x02014b50) throw new Error('Damaged zip: bad central directory header.')
+    const method = zip.readUInt16LE(offset + 10)
+    const compressedSize = zip.readUInt32LE(offset + 20)
+    const nameLength = zip.readUInt16LE(offset + 28)
+    const extraLength = zip.readUInt16LE(offset + 30)
+    const commentLength = zip.readUInt16LE(offset + 32)
+    const localHeaderOffset = zip.readUInt32LE(offset + 42)
+    const name = zip.subarray(offset + 46, offset + 46 + nameLength).toString('utf8')
+
+    // The local header's name/extra lengths can differ from the central copy.
+    const localNameLength = zip.readUInt16LE(localHeaderOffset + 26)
+    const localExtraLength = zip.readUInt16LE(localHeaderOffset + 28)
+    const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength
+    const compressed = zip.subarray(dataStart, dataStart + compressedSize)
+
+    if (method === 8) entries.set(name, inflateRawSync(compressed))
+    else if (method === 0) entries.set(name, Buffer.from(compressed))
+    else throw new Error(`Unsupported compression method ${method} for ${name}.`)
+
+    offset += 46 + nameLength + extraLength + commentLength
+  }
+  return entries
 }

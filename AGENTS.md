@@ -14,6 +14,7 @@ pattern piece or drafting a garment, it belongs in the other project.
 | `docs/technical-design.md` | Modules, the data model, the seams, delivery plan |
 | `docs/design-brief.md` | How the client looks, moves and feels — the mobile-first rules |
 | `docs/deployment.md` | Running the container: environment, proxy, backups, upgrades |
+| `docs/v2-plan.md` | What comes after v1 — scoped, costed, ordered |
 | `docs/adr/` | Decisions that are hard to reverse |
 
 The brief, the technical design and the design brief are written, and `docs/adr/` holds the

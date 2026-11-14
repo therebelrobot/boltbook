@@ -81,7 +81,10 @@ the container stopped or right after a `wal_checkpoint`. Keep the copy wherever 
 records themselves, and note that anyone with the file reads the whole stash.
 
 There is also a portable export — **Settings → Export** or `GET /api/export` — which is a zip of
-`boltbook.json` plus the photo files, with credentials excluded.
+`boltbook.json` plus the photo files, with credentials excluded. Restoring it
+(**Settings → Restore**, or `POST /api/import?mode=replace`) **replaces every record** on the
+instance; it does not merge, and it never touches the account or this instance's own audit log. If
+you want to be careful, take an export of the current state first — it is one click.
 
 ## Upgrading
 
