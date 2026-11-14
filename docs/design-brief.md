@@ -167,9 +167,9 @@ threshold, so a vertical scroll is never stolen.
 
 ## 7. Components
 
-- **Adding a fabric is camera-first** — the primary action opens the camera; the form follows
-  with what the photo gives, and every field is skippable, because a photo and a name is a
-  valid bolt.
+- **Adding a fabric is camera-first** — the primary action opens the camera, the photo leads the
+  form (it sits above the fields, not below them), and every field is skippable, because a photo
+  and a name is a valid bolt.
 - **The fabric row** — swatch/photo thumb · name · `fibre · width` · **remaining length** ·
   location. The remaining length is the number the whole app exists to answer.
 - **The yardage meter** — a thin bar: remaining against original, with the reserved slice

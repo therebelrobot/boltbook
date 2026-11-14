@@ -14,11 +14,13 @@ interface EntitySheetProps {
   onSave: (values: Record<string, unknown>) => Promise<void>
   onDelete?: () => Promise<void>
   onClose: () => void
-  /** Extra sections below the fields, e.g. a fabric's photos. */
+  /** Above the fields: what you provide first. The photo of a fabric leads. */
+  leading?: ReactNode
+  /** Below the fields: detail that follows the identity, e.g. views, allocation. */
   children?: ReactNode
 }
 
-export function EntitySheet({ title, fields, record, onSave, onDelete, onClose, children }: EntitySheetProps) {
+export function EntitySheet({ title, fields, record, onSave, onDelete, onClose, leading, children }: EntitySheetProps) {
   const { unit } = useUnit()
   const [values, setValues] = useState<Record<string, FormValue>>(() => {
     const initial: Record<string, FormValue> = {}
@@ -70,6 +72,8 @@ export function EntitySheet({ title, fields, record, onSave, onDelete, onClose, 
   return (
     <Sheet title={title} onClose={onClose}>
       <form onSubmit={submit}>
+        {leading}
+
         {fields.map((spec) => {
           const value = values[spec.name]
           const id = `field-${spec.name}`

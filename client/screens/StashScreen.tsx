@@ -300,19 +300,22 @@ export function StashScreen() {
             setSheet(null)
             setPendingPhoto(null)
           }}
-        >
-          {kind === 'fabric' && (
-            <PhotoField
-              fabricId={sheet.mode === 'edit' ? sheet.id : null}
-              photos={photos}
-              pendingFile={pendingPhoto}
-              onPendingFile={setPendingPhoto}
-              onChanged={() => void reload()}
-              onRequestPhoto={requestPhoto}
-            />
-          )}
-          {kind === 'fabric' && photoError && <p className="error">{photoError}</p>}
-        </EntitySheet>
+          leading={
+            kind === 'fabric' ? (
+              <>
+                <PhotoField
+                  fabricId={sheet.mode === 'edit' ? sheet.id : null}
+                  photos={photos}
+                  pendingFile={pendingPhoto}
+                  onPendingFile={setPendingPhoto}
+                  onChanged={() => void reload()}
+                  onRequestPhoto={requestPhoto}
+                />
+                {photoError && <p className="error">{photoError}</p>}
+              </>
+            ) : undefined
+          }
+        />
       )}
 
       <input
