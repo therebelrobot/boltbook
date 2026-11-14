@@ -312,10 +312,18 @@ left* always means **remaining minus reserved**.
 
 ## 9. Export and backup
 
-- `GET /api/export` streams a zip: `boltbook.json` (every table, photos as base64) plus
-  `photos/<id>.jpg`. Recorded in the audit log, as in `reframe`.
-- Backup is a file copy: `data/boltbook.db` (checkpoint WAL first). Because there is no
-  encryption, the copy is readable with `sqlite3` — a deliberate property (ADR 0001).
+**Built at M6.**
+
+- `GET /api/export` streams a zip: **`boltbook.json`** with every table, and **`photos/<id>.<ext>`**
+  with the image bytes. The bytes are entries rather than base64 in the JSON — base64 would
+  inflate every photo by a third for no gain, and a zip of files is what a person can actually
+  open. `fabric_photo` rows keep their metadata plus a `file` pointer to match them up.
+- **Credentials are never exported.** The `account` table (passphrase hash, authenticator secret)
+  is excluded: an export is your records, and restoring one should never carry a hash with it.
+- The export is recorded in the audit log, and offered from Settings as a download.
+- **Backup is a file copy**: `npm run backup -- ./backups` settles the write-ahead log
+  (`wal_checkpoint(TRUNCATE)`) and copies `boltbook.db`. Because there is no encryption, the copy
+  is readable with any SQLite tool — a deliberate property (ADR 0001), not an oversight.
 
 ## 10. Dependency register
 
@@ -358,7 +366,7 @@ land at M5.
 | M4b | Photos | fabric_photo, raw-bytes upload, serve by id, delete, cascade — **done** |
 | M5 | Client | React + Vite, mobile-first: shell, access, stash with camera-first photos, patterns, projects with allocation, search, settings, units — **done** |
 | M5b | Tags + views editor | tag store, routes, filters and tag search; the pattern views/requirements editor in the client — **done** |
-| M6 | Export + audit | zip export, backup doc |
+| M6 | Export + backup | zip export from the API and Settings, `npm run backup` — **done** |
 | M7 | Ship | Dockerfile (multi-stage), compose, reverse proxy notes, deploy |
 
 Auth (M4) could land before M1's later parts; the plan keeps it early enough that nothing ships

@@ -204,6 +204,13 @@ button {
   opacity: 0.5;
 }
 
+/* An anchor styled as a button (the export download). */
+a.button {
+  color: var(--text);
+  text-decoration: none;
+  width: fit-content;
+}
+
 .fab {
   position: fixed;
   right: 1rem;

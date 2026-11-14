@@ -17,6 +17,7 @@ import { ToolRepository } from './repositories/tools'
 import { ProjectRepository } from './repositories/projects'
 import { TagsRepository } from './repositories/tags'
 import { searchAll } from './repositories/search'
+import { buildExportZip } from './export'
 import {
   FABRIC_ALLOCATION_MEASURES,
   FABRIC_MEASURES,
@@ -356,6 +357,16 @@ export function createApplication(dependencies: ApplicationDependencies) {
   })
 
   app.get('/api/audit', (context) => context.json(auditLog.listRecent(100)))
+
+  // Export — everything in one zip: the records as JSON, the photos as files.
+  app.get('/api/export', (context) => {
+    const stamp = nowIso().slice(0, 10)
+    const { zip } = buildExportZip(database, nowIso())
+    audit(context, 'exported')
+    context.header('Content-Type', 'application/zip')
+    context.header('Content-Disposition', `attachment; filename="boltbook-${stamp}.zip"`)
+    return context.body(new Uint8Array(zip))
+  })
 
   app.post('/api/passphrase', async (context) => {
     const rateLimitedResponse = rejectIfRateLimited(context)

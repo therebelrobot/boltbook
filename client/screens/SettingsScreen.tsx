@@ -164,6 +164,14 @@ export function SettingsScreen({ onClose, onSignedOut }: SettingsScreenProps) {
       {note && <p className="muted">{note}</p>}
       {error && <p className="error">{error}</p>}
 
+      <h3 style={{ fontSize: '0.9375rem', marginTop: '1.25rem' }}>Export</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        One zip: every record as JSON, every photo as a file. Credentials are never included.
+      </p>
+      <a className="button" href="/api/export" download>
+        Download everything (.zip)
+      </a>
+
       <h3 style={{ fontSize: '0.9375rem', marginTop: '1.25rem' }}>Recent activity</h3>
       <div className="card">
         {audit.slice(0, 12).map((entry) => (

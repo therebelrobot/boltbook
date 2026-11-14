@@ -17,6 +17,7 @@
     "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
+    "backup": "node --import tsx scripts/backup.ts",
     "reset-passphrase": "node --import tsx scripts/reset-passphrase.ts"
   },
   "dependencies": {

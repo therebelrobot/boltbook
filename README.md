@@ -86,6 +86,13 @@ Configuration is environment-only: `BOLTBOOK_DATA_DIR`, `BOLTBOOK_DB`, `BOLTBOOK
 recover. `npm run reset-passphrase -- --yes` clears the account (your records are untouched),
 then claim the instance again with the setup token.
 
+## Export and backup
+
+- **Settings → Export**, or `GET /api/export`, gives one zip: `boltbook.json` with every record,
+  and `photos/` with the image files. Credentials are never in it.
+- `npm run backup -- ./backups` settles the write-ahead log and copies `boltbook.db`. The copy is
+  plaintext by design, so any SQLite tool can read it.
+
 ## Status
 
 **M1–M5 landed.** The backend and the client are both real:
