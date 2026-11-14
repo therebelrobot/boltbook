@@ -27,15 +27,17 @@ machine, without the account or the cloud.
 
 ## Status
 
-**M1–M4 landed.** The backend is complete: fabrics, patterns (with views and per-view yardage
-requirements), notions, thread and tools, each with full CRUD, plus FTS5 search across all four
-indexed entities. Projects allocate fabric, thread and notions, and the shortfall readout reports
-what is short (remaining minus what other live projects reserve) and what is too narrow.
+**M1–M4b landed.** The backend is complete: fabrics (with photos), patterns (with views and
+per-view yardage requirements), notions, thread and tools, each with full CRUD, plus FTS5 search
+across the four indexed entities. Projects allocate fabric, thread and notions, and the shortfall
+readout reports what is short (remaining minus what other live projects reserve) and what is too
+narrow.
 
 Access is the house single-user model minus the vault: a one-time setup token claims the
 instance, then a passphrase (optional TOTP) with a `__Host-` session cookie, rate limiting, an
-audit log, and a `reset-passphrase` script. 71 passing tests; `npm audit` clean on Node 26.13.1.
-The client (M5) and fabric photos are next. The client is mobile-first.
+audit log, and a `reset-passphrase` script. 81 passing tests; `npm audit` clean on Node 26.13.1.
+The client (M5) is next, and it does the photo downscaling and EXIF stripping. The client is
+mobile-first.
 
 ## License
 

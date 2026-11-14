@@ -228,13 +228,17 @@ be read as FTS5 syntax.
 
 ## 7. Photos and files
 
-Photos are **rows**, not files, so the whole record is one file to copy.
+Photos are **rows**, not files, so the whole record is one file to copy. **Built 2026-11-14.**
 
-- The client downscales to ≤ 2000 px on the long edge and re-encodes JPEG q≈0.8 before upload,
-  and strips EXIF/GPS. Cap the multipart body at 8 MB (the `/api/*` guard, higher than
-  `reframe`'s 256 KB).
-- Served back by id with a long `immutable` cache; the id is the cache key, so a replaced photo
+- One image per request, sent as **raw bytes** with the image's own `Content-Type` (not
+  multipart) — `POST /api/fabrics/:id/photos`. Accepted types are JPEG, PNG and WebP; the body
+  is capped at 8 MB, and a fabric holds at most **20** photos.
+- Dimensions ride in `?widthPx=&heightPx=` so the client can reserve the right box before the
+  image loads (the design brief forbids layout shift).
+- Served by id with a long `immutable` cache — **the id is the cache key**, so a replaced photo
   gets a new id and never serves stale bytes.
+- **Downscale and EXIF/GPS stripping are the client's job**, not the server's; the server accepts
+  what it is given and only enforces type and size. The client half arrives with M5.
 - Attached **pattern PDFs are links, not uploads** (v1): the row stores a URL or a path on the
   box. Owning pattern binaries is a v2 question.
 
@@ -309,6 +313,7 @@ land at M5.
 | M2b | Thread + tools | thread and tool tables and APIs, by request — **done** |
 | M3 | Projects | projects, allocation across fabric/thread/notions, `shortfall.ts` with unit tests — **done** |
 | M4 | Auth | setup/login/logout/passphrase/TOTP, sessions, rate limit, guards — **done** |
+| M4b | Photos | fabric_photo, raw-bytes upload, serve by id, delete, cascade — **done** |
 | M5 | Client | Stash, Patterns, Notions, Projects, Search, Settings, Access screens |
 | M6 | Export + audit | zip export, audit log, backup doc |
 | M7 | Ship | Dockerfile (multi-stage), compose, reverse proxy notes, deploy |

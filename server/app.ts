@@ -72,6 +72,10 @@ const NOTION_KINDS: readonly NotionKind[] = ['button', 'zipper', 'interfacing', 
 const TOOL_CATEGORIES: readonly ToolCategory[] = ['cutting', 'measuring', 'pressing', 'machine', 'marking', 'needles_pins', 'other']
 const PROJECT_STATUSES: readonly ProjectStatus[] = ['planned', 'cutting', 'sewing', 'done', 'abandoned']
 
+/** Photos are downscaled in the browser before upload; these are the last line of defence. */
+const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024
+
 const STATUS_BY_AUTH_ERROR = {
   already_claimed: 409,
   not_claimed: 409,
@@ -166,6 +170,16 @@ export function createApplication(dependencies: ApplicationDependencies) {
     if (value === 'true' || value === '1') return true
     if (value === 'false' || value === '0') return false
     throw new RecordValidationError(`${name} must be true or false.`)
+  }
+
+  const optionalIntegerQuery = (context: Context, name: string, maximum: number): number | null => {
+    const raw = context.req.query(name)
+    if (!raw) return null
+    const parsed = Number(raw)
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > maximum) {
+      throw new RecordValidationError(`${name} must be a non-negative integer no larger than ${maximum}.`)
+    }
+    return parsed
   }
 
   // ---------- global headers ----------
@@ -374,6 +388,34 @@ export function createApplication(dependencies: ApplicationDependencies) {
 
   app.delete('/api/fabrics/:fabricId', (context) => {
     fabrics.delete(context.req.param('fabricId'))
+    return context.json({ ok: true })
+  })
+
+  // Fabric photos — one image per request, raw bytes, downscaled and EXIF-stripped client-side.
+
+  app.post('/api/fabrics/:fabricId/photos', async (context) => {
+    const contentType = (context.req.header('content-type') ?? '').split(';')[0]!.trim().toLowerCase()
+    if (!ALLOWED_PHOTO_TYPES.has(contentType)) throw new RecordValidationError('Photos must be JPEG, PNG or WebP.')
+    const bytes = Buffer.from(await context.req.arrayBuffer())
+    if (bytes.byteLength === 0) throw new RecordValidationError('The photo is empty.')
+    if (bytes.byteLength > MAX_PHOTO_BYTES) throw new RecordValidationError('The photo is larger than 8 MB.')
+    const widthPx = optionalIntegerQuery(context, 'widthPx', 20_000)
+    const heightPx = optionalIntegerQuery(context, 'heightPx', 20_000)
+    return context.json(fabrics.addPhoto(context.req.param('fabricId'), { contentType, bytes, widthPx, heightPx }, nowIso()), 201)
+  })
+
+  app.get('/api/fabrics/:fabricId/photos/:photoId', (context) => {
+    const photo = fabrics.getPhotoBytes(context.req.param('fabricId'), context.req.param('photoId'))
+    if (!photo) throw new RecordNotFoundError('No such photo.')
+    context.header('Content-Type', photo.contentType)
+    context.header('Content-Disposition', 'inline')
+    // The id is the cache key: a replaced photo gets a new id, so this never serves stale bytes.
+    context.header('Cache-Control', 'public, max-age=31536000, immutable')
+    return context.body(new Uint8Array(photo.bytes))
+  })
+
+  app.delete('/api/fabrics/:fabricId/photos/:photoId', (context) => {
+    fabrics.deletePhoto(context.req.param('fabricId'), context.req.param('photoId'))
     return context.json({ ok: true })
   })
 

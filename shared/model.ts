@@ -8,6 +8,17 @@ export type RequirementRole = 'main' | 'lining' | 'interfacing' | 'other'
 export type NotionKind = 'button' | 'zipper' | 'interfacing' | 'elastic' | 'trim' | 'other'
 export type ToolCategory = 'cutting' | 'measuring' | 'pressing' | 'machine' | 'marking' | 'needles_pins' | 'other'
 
+export interface FabricPhoto {
+  id: string
+  fabricId: string
+  position: number
+  contentType: string
+  widthPx: number | null
+  heightPx: number | null
+  byteSize: number
+  createdAt: string
+}
+
 export interface Fabric {
   id: string
   name: string
@@ -25,12 +36,13 @@ export interface Fabric {
   location: string | null
   care: string | null
   notes: string | null
+  photos: FabricPhoto[]
   createdAt: string
   updatedAt: string
 }
 
-/** Everything a caller may set. `id` and timestamps are the server's. */
-export type FabricInput = Omit<Fabric, 'id' | 'createdAt' | 'updatedAt'>
+/** Everything a caller may set. `id`, `photos` and timestamps are the server's. */
+export type FabricInput = Omit<Fabric, 'id' | 'photos' | 'createdAt' | 'updatedAt'>
 
 export interface FabricFilters {
   fibre?: string
