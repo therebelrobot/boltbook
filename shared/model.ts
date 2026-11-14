@@ -185,6 +185,69 @@ export interface ToolFilters {
   needsAttention?: boolean
 }
 
+// ---------- projects and allocation ----------
+
+export type ProjectStatus = 'planned' | 'cutting' | 'sewing' | 'done' | 'abandoned'
+
+/** Statuses during which a project reserves stash it has not consumed yet. */
+export const ACTIVE_PROJECT_STATUSES: readonly ProjectStatus[] = ['planned', 'cutting', 'sewing']
+
+export interface FabricAllocation {
+  fabricId: string
+  lengthMmUsed: number | null
+}
+
+export interface ThreadAllocation {
+  threadId: string
+  lengthMUsed: number | null
+}
+
+export interface NotionAllocation {
+  notionId: string
+  quantityUsed: number | null
+}
+
+export interface ProjectAllocations {
+  fabrics: FabricAllocation[]
+  threads: ThreadAllocation[]
+  notions: NotionAllocation[]
+}
+
+export interface Project {
+  id: string
+  title: string
+  patternViewId: string | null
+  status: ProjectStatus
+  /** True once the stash has been decremented for this project. */
+  consumed: boolean
+  startedOn: string | null
+  finishedOn: string | null
+  notes: string | null
+  allocations: ProjectAllocations
+  createdAt: string
+  updatedAt: string
+}
+
+export type ProjectInput = Omit<Project, 'id' | 'allocations' | 'consumed' | 'createdAt' | 'updatedAt'>
+
+export interface ProjectFilters {
+  status?: ProjectStatus
+}
+
+export type ConsumableKind = 'fabric' | 'thread' | 'notion'
+
+export interface ShortfallLine {
+  kind: ConsumableKind
+  targetId: string
+  needed: number | null
+  /** Remaining in the stash minus what other active projects have reserved. */
+  available: number
+  /** Positive when the stash cannot cover the claim; 0 when it can. */
+  short: number
+  /** Fabric narrower than the pattern asks for. A warning, not a shortfall. */
+  tooNarrow: boolean
+}
+
 export interface SearchHit {
   type: 'fabric' | 'pattern' | 'thread' | 'tool'
   id: string
@@ -201,4 +264,5 @@ export interface Status {
   notionCount: number
   threadCount: number
   toolCount: number
+  projectCount: number
 }

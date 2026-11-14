@@ -104,3 +104,24 @@ export const toolInputSchema = z.object({
   currency: optionalCurrency,
   notes: nullable(z.string().max(5000)),
 })
+
+export const projectInputSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  patternViewId: nullable(z.string().trim().min(1).max(64)),
+  status: z.enum(['planned', 'cutting', 'sewing', 'done', 'abandoned']).default('planned'),
+  startedOn: optionalDate,
+  finishedOn: optionalDate,
+  notes: nullable(z.string().max(5000)),
+})
+
+export const allocationsInputSchema = z.object({
+  fabrics: z
+    .array(z.object({ fabricId: z.string().trim().min(1).max(64), lengthMmUsed: optionalMillimetres }))
+    .default([]),
+  threads: z
+    .array(z.object({ threadId: z.string().trim().min(1).max(64), lengthMUsed: optionalMetres }))
+    .default([]),
+  notions: z
+    .array(z.object({ notionId: z.string().trim().min(1).max(64), quantityUsed: nullable(z.number().min(0).max(1_000_000)) }))
+    .default([]),
+})

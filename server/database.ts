@@ -206,6 +206,40 @@ const MIGRATIONS: string[] = [
      INSERT INTO tool_fts(rowid, name, brand, category, spec, notes)
      VALUES (new.rowid, new.name, new.brand, new.category, new.spec, new.notes);
    END;`,
+
+  `CREATE TABLE project (
+     id              TEXT PRIMARY KEY,
+     title           TEXT NOT NULL,
+     pattern_view_id TEXT REFERENCES pattern_view(id) ON DELETE SET NULL,
+     status          TEXT NOT NULL DEFAULT 'planned',
+     consumed        INTEGER NOT NULL DEFAULT 0,
+     started_on      TEXT,
+     finished_on     TEXT,
+     notes           TEXT,
+     created_at      TEXT NOT NULL,
+     updated_at      TEXT NOT NULL
+   );
+   CREATE INDEX project_status_idx ON project(status);
+   CREATE INDEX project_view_idx ON project(pattern_view_id);
+
+   CREATE TABLE project_fabric (
+     project_id     TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+     fabric_id      TEXT NOT NULL REFERENCES fabric(id) ON DELETE CASCADE,
+     length_mm_used INTEGER,
+     PRIMARY KEY (project_id, fabric_id)
+   );
+   CREATE TABLE project_thread (
+     project_id    TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+     thread_id     TEXT NOT NULL REFERENCES thread(id) ON DELETE CASCADE,
+     length_m_used INTEGER,
+     PRIMARY KEY (project_id, thread_id)
+   );
+   CREATE TABLE project_notion (
+     project_id   TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+     notion_id    TEXT NOT NULL REFERENCES notion(id) ON DELETE CASCADE,
+     quantity_used REAL,
+     PRIMARY KEY (project_id, notion_id)
+   );`,
 ]
 
 export type Database = DatabaseSync

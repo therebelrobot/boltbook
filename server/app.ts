@@ -8,13 +8,16 @@ import { PatternRepository } from './repositories/patterns'
 import { NotionRepository } from './repositories/notions'
 import { ThreadRepository, assertThreadInvariant } from './repositories/threads'
 import { ToolRepository } from './repositories/tools'
+import { ProjectRepository } from './repositories/projects'
 import { searchAll } from './repositories/search'
 import {
+  allocationsInputSchema,
   fabricInputSchema,
   notionInputSchema,
   patternInputSchema,
   patternRequirementInputSchema,
   patternViewInputSchema,
+  projectInputSchema,
   threadInputSchema,
   toolInputSchema,
 } from './schemas'
@@ -25,7 +28,10 @@ import type {
   NotionKind,
   PatternFilters,
   PatternFormat,
+  ProjectFilters,
+  ProjectStatus,
   SearchHit,
+  ShortfallLine,
   Status,
   ThreadFilters,
   ToolCategory,
@@ -48,6 +54,7 @@ const CONTENT_SECURITY_POLICY = [
 const PATTERN_FORMATS: readonly PatternFormat[] = ['envelope', 'pdf', 'book', 'other']
 const NOTION_KINDS: readonly NotionKind[] = ['button', 'zipper', 'interfacing', 'elastic', 'trim', 'other']
 const TOOL_CATEGORIES: readonly ToolCategory[] = ['cutting', 'measuring', 'pressing', 'machine', 'marking', 'needles_pins', 'other']
+const PROJECT_STATUSES: readonly ProjectStatus[] = ['planned', 'cutting', 'sewing', 'done', 'abandoned']
 
 export interface ApplicationDependencies {
   database: Database
@@ -65,6 +72,7 @@ export function createApplication(dependencies: ApplicationDependencies) {
   const notions = new NotionRepository(database)
   const threads = new ThreadRepository(database)
   const tools = new ToolRepository(database)
+  const projects = new ProjectRepository(database)
   const app = new Hono()
 
   const readJsonBody = async <Schema extends z.ZodType>(context: Context, schema: Schema): Promise<z.infer<Schema>> =>
@@ -106,6 +114,7 @@ export function createApplication(dependencies: ApplicationDependencies) {
       notionCount: notions.count(),
       threadCount: threads.count(),
       toolCount: tools.count(),
+      projectCount: projects.count(),
     }
     return context.json(status)
   })
@@ -343,6 +352,49 @@ export function createApplication(dependencies: ApplicationDependencies) {
     return context.json({ ok: true })
   })
 
+  // Project (with allocations and the shortfall readout)
+
+  app.get('/api/projects', (context) => {
+    const filters: ProjectFilters = {}
+    const status = context.req.query('status')
+    if (status) {
+      if (!PROJECT_STATUSES.includes(status as ProjectStatus)) throw new RecordValidationError('Unknown project status.')
+      filters.status = status as ProjectStatus
+    }
+    return context.json(projects.list(filters))
+  })
+
+  app.post('/api/projects', async (context) => {
+    const input = await readJsonBody(context, projectInputSchema)
+    return context.json(projects.create(input, nowIso()), 201)
+  })
+
+  app.get('/api/projects/:projectId', (context) => {
+    const project = projects.get(context.req.param('projectId'))
+    if (!project) throw new RecordNotFoundError('No such project.')
+    return context.json(project)
+  })
+
+  app.put('/api/projects/:projectId', async (context) => {
+    const input = await readJsonBody(context, projectInputSchema)
+    return context.json(projects.replace(context.req.param('projectId'), input, nowIso()))
+  })
+
+  app.delete('/api/projects/:projectId', (context) => {
+    projects.delete(context.req.param('projectId'))
+    return context.json({ ok: true })
+  })
+
+  app.put('/api/projects/:projectId/allocations', async (context) => {
+    const input = await readJsonBody(context, allocationsInputSchema)
+    return context.json(projects.setAllocations(context.req.param('projectId'), input, nowIso()))
+  })
+
+  app.get('/api/projects/:projectId/shortfall', (context) => {
+    const lines: ShortfallLine[] = projects.shortfall(context.req.param('projectId'))
+    return context.json({ lines })
+  })
+
   // Search
 
   app.get('/api/search', (context) => {
@@ -371,5 +423,5 @@ export function createApplication(dependencies: ApplicationDependencies) {
     return context.json({ error: 'server_error', message: 'Something went wrong on the server.' }, 500)
   })
 
-  return { app, fabrics, patterns, notions, threads, tools }
+  return { app, fabrics, patterns, notions, threads, tools, projects }
 }

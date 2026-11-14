@@ -12,6 +12,7 @@ test('an empty instance reports zero of everything', async () => {
     notionCount: 0,
     threadCount: 0,
     toolCount: 0,
+    projectCount: 0,
   })
 })
 

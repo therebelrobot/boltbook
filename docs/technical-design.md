@@ -237,23 +237,29 @@ Photos are **rows**, not files, so the whole record is one file to copy.
 
 ## 8. Allocation and shortfall
 
-The one piece of real domain logic, kept pure in `server/shortfall.ts` so it is tested without
-a database.
+The one piece of real domain logic, kept pure in `server/shortfall.ts` so it is tested without a
+database. **Built at M3.**
 
-For a project linked to a pattern view:
+A project allocates *what it will use* — fabric (millimetres), thread (metres) and notions
+(count) — each an amount that may be `null` ("allocated, amount unknown"). Against that:
 
-1. `required` = the view's `pattern_requirement` rows. Each names a `role`, a fabric
-   `fabric_width_mm`, and a `length_mm`.
-2. For a chosen fabric, the *usable* amount is `fabric.length_mm` (remaining) **minus** what
-   other active projects (status `planned | cutting | sewing`) have reserved on the same bolt.
-3. **Shortfall** = `max(0, required.length_mm − usable)`, reported in millimetres with a
-   display conversion. **Too narrow** if `fabric.width_mm < required.fabric_width_mm`, reported
-   as a warning rather than a shortfall, because a garment can be pieced.
-4. On a project reaching **done**, `fabric.length_mm` is decremented by the sum of its
-   `project_fabric` usage, and the reservation stops counting.
+1. **Available** = the stash's remaining amount **minus what other active projects have
+   reserved**. Active means `planned`, `cutting` or `sewing`; `done` and `abandoned` reserve
+   nothing, so two live projects cannot each count the same metre.
+2. A claim is **short** when `amount > available`, reported in the claim's own unit and never
+   negative.
+3. **Too narrow** is separate from short: when the project's pattern view states a required fabric
+   width and the chosen fabric is narrower, it is a **warning**, not a shortfall — a garment can
+   be pieced.
+4. On a project reaching **done** the stash is decremented **once** (`consumed`), by the allocated
+   amounts, and the reservation stops counting. Moving off `done` does not undo the cut — the
+   cloth is already cut.
 
-The rule the UI must honour: a fabric can be allocated to a project without being consumed, and
-"what is left" always means *remaining minus reserved*.
+The rule the UI must honour: an amount can be allocated without being consumed, and *what is
+left* always means **remaining minus reserved**.
+
+`GET /api/projects/:id/shortfall` returns the lines; allocations are set wholesale with
+`PUT /api/projects/:id/allocations`.
 
 ## 9. Export and backup
 
@@ -298,7 +304,7 @@ land at M5.
 | M1 | Store | migrations, repositories, fabrics CRUD API, FTS5 verdict, dep EOL/CVE check — **done** |
 | M2 | Patterns + notions | patterns with views and requirements; notions inventory; CRUD APIs — **done** |
 | M2b | Thread + tools | thread and tool tables and APIs, by request — **done** |
-| M3 | Projects | projects, allocation, `shortfall.ts` with unit tests |
+| M3 | Projects | projects, allocation across fabric/thread/notions, `shortfall.ts` with unit tests — **done** |
 | M4 | Auth | setup/login/logout/passphrase/TOTP, sessions, rate limit, guards |
 | M5 | Client | Stash, Patterns, Notions, Projects, Search, Settings, Access screens |
 | M6 | Export + audit | zip export, audit log, backup doc |
