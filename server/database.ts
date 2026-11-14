@@ -6,8 +6,9 @@ import { DatabaseSync } from 'node:sqlite'
  * Schema, applied in order. Each entry is one migration; `PRAGMA user_version`
  * says how many have run. Plaintext throughout — see docs/adr/0001.
  *
- * Milestone 1 covers fabric. Patterns, notions, projects, tags, the account and
- * the audit log are later migrations; see docs/technical-design.md §3.
+ * 1 — fabric (+ FTS5).  2 — pattern, views, requirements, notion (+ FTS5).
+ * Projects, tags, the account and the audit log are later migrations; see
+ * docs/technical-design.md §3.
  */
 const MIGRATIONS: string[] = [
   `CREATE TABLE fabric (
@@ -51,6 +52,80 @@ const MIGRATIONS: string[] = [
      VALUES ('delete', old.rowid, old.name, old.fibre, old.colour, old.print_type, old.location, old.notes);
      INSERT INTO fabric_fts(rowid, name, fibre, colour, print_type, location, notes)
      VALUES (new.rowid, new.name, new.fibre, new.colour, new.print_type, new.location, new.notes);
+   END;`,
+
+  `CREATE TABLE pattern (
+     id             TEXT PRIMARY KEY,
+     name           TEXT NOT NULL,
+     brand          TEXT,
+     number         TEXT,
+     format         TEXT,
+     size_min       TEXT,
+     size_max       TEXT,
+     difficulty     TEXT,
+     category       TEXT,
+     source         TEXT,
+     year           INTEGER,
+     tried_and_true INTEGER NOT NULL DEFAULT 0,
+     link_url       TEXT,
+     notes          TEXT,
+     created_at     TEXT NOT NULL,
+     updated_at     TEXT NOT NULL
+   );
+   CREATE INDEX pattern_brand_idx ON pattern(brand);
+   CREATE INDEX pattern_category_idx ON pattern(category);
+
+   CREATE TABLE pattern_view (
+     id          TEXT PRIMARY KEY,
+     pattern_id  TEXT NOT NULL REFERENCES pattern(id) ON DELETE CASCADE,
+     label       TEXT NOT NULL,
+     description TEXT,
+     position    INTEGER NOT NULL
+   );
+   CREATE INDEX pattern_view_pattern_idx ON pattern_view(pattern_id);
+
+   CREATE TABLE pattern_requirement (
+     id              TEXT PRIMARY KEY,
+     pattern_view_id TEXT NOT NULL REFERENCES pattern_view(id) ON DELETE CASCADE,
+     role            TEXT NOT NULL,
+     fabric_width_mm INTEGER,
+     length_mm       INTEGER,
+     note            TEXT
+   );
+   CREATE INDEX pattern_requirement_view_idx ON pattern_requirement(pattern_view_id);
+
+   CREATE TABLE notion (
+     id         TEXT PRIMARY KEY,
+     name       TEXT NOT NULL,
+     kind       TEXT,
+     colour     TEXT,
+     spec       TEXT,
+     quantity   REAL,
+     unit       TEXT,
+     location   TEXT,
+     notes      TEXT,
+     created_at TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );
+   CREATE INDEX notion_kind_idx ON notion(kind);
+
+   CREATE VIRTUAL TABLE pattern_fts USING fts5(
+     brand, number, name, category, notes,
+     content='pattern', content_rowid='rowid'
+   );
+   CREATE TRIGGER pattern_after_insert AFTER INSERT ON pattern BEGIN
+     INSERT INTO pattern_fts(rowid, brand, number, name, category, notes)
+     VALUES (new.rowid, new.brand, new.number, new.name, new.category, new.notes);
+   END;
+   CREATE TRIGGER pattern_after_delete AFTER DELETE ON pattern BEGIN
+     INSERT INTO pattern_fts(pattern_fts, rowid, brand, number, name, category, notes)
+     VALUES ('delete', old.rowid, old.brand, old.number, old.name, old.category, old.notes);
+   END;
+   CREATE TRIGGER pattern_after_update AFTER UPDATE ON pattern BEGIN
+     INSERT INTO pattern_fts(pattern_fts, rowid, brand, number, name, category, notes)
+     VALUES ('delete', old.rowid, old.brand, old.number, old.name, old.category, old.notes);
+     INSERT INTO pattern_fts(rowid, brand, number, name, category, notes)
+     VALUES (new.rowid, new.brand, new.number, new.name, new.category, new.notes);
    END;`,
 ]
 

@@ -204,8 +204,8 @@ SQLite **FTS5** — verified present in Node 26.13.1's bundled SQLite (3.54.1) a
 triggers:
 
 - `fabric_fts(name, fibre, colour, print_type, location, notes)` — built at M1; a `tags` column
-  joins when `tag_link` does (M2).
-- `pattern_fts(brand, number, name, category, notes, tags)` — at M2.
+  joins when `tag_link` does (a later migration).
+- `pattern_fts(brand, number, name, category, notes)` — built at M2.
 
 `GET /api/search?q=` runs a ranked `BM25` `MATCH` and returns hits with the entity type, a
 title, the best snippet, and — for fabric — remaining `length_mm`. Free text is tokenised and
@@ -285,7 +285,7 @@ land at M5.
 |---|---|---|
 | M0 | Scaffold | repo, brief, ADR, design brief, this doc — **done** |
 | M1 | Store | migrations, repositories, fabrics CRUD API, FTS5 verdict, dep EOL/CVE check — **done** |
-| M2 | Patterns + notions | patterns with views and requirements; notions inventory; CRUD APIs |
+| M2 | Patterns + notions | patterns with views and requirements; notions inventory; CRUD APIs — **done** |
 | M3 | Projects | projects, allocation, `shortfall.ts` with unit tests |
 | M4 | Auth | setup/login/logout/passphrase/TOTP, sessions, rate limit, guards |
 | M5 | Client | Stash, Patterns, Notions, Projects, Search, Settings, Access screens |
@@ -313,5 +313,3 @@ unauthenticated.
   only if typical photos keep the DB reasonable.
 - **Pattern PDFs**: link-only in v1 (as above) or store the file.
 - **Pattern source**: free-text, or a curated list of houses (Simplicity, McCall's, …)?
-- **Notions in v1** — the brief lists them; if they add too much to M2 they can slip without
-  weakening fabric + patterns + projects.

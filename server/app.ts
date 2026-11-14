@@ -4,9 +4,26 @@ import { z } from 'zod'
 import type { Database } from './database'
 import type { ServerConfig } from './config'
 import { FabricRepository, assertFabricInvariant } from './repositories/fabrics'
-import { fabricInputSchema } from './schemas'
+import { PatternRepository } from './repositories/patterns'
+import { NotionRepository } from './repositories/notions'
+import { searchAll } from './repositories/search'
+import {
+  fabricInputSchema,
+  notionInputSchema,
+  patternInputSchema,
+  patternRequirementInputSchema,
+  patternViewInputSchema,
+} from './schemas'
 import { RecordConflictError, RecordNotFoundError, RecordValidationError } from './errors'
-import type { FabricFilters, SearchHit, Status } from '../shared/model'
+import type {
+  FabricFilters,
+  NotionFilters,
+  NotionKind,
+  PatternFilters,
+  PatternFormat,
+  SearchHit,
+  Status,
+} from '../shared/model'
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
@@ -21,6 +38,9 @@ const CONTENT_SECURITY_POLICY = [
   "frame-ancestors 'none'",
 ].join('; ')
 
+const PATTERN_FORMATS: readonly PatternFormat[] = ['envelope', 'pdf', 'book', 'other']
+const NOTION_KINDS: readonly NotionKind[] = ['thread', 'button', 'zipper', 'interfacing', 'elastic', 'trim', 'other']
+
 export interface ApplicationDependencies {
   database: Database
   config?: ServerConfig
@@ -33,10 +53,19 @@ export function createApplication(dependencies: ApplicationDependencies) {
   const nowIso = () => new Date(currentTimeMilliseconds()).toISOString()
 
   const fabrics = new FabricRepository(database)
+  const patterns = new PatternRepository(database)
+  const notions = new NotionRepository(database)
   const app = new Hono()
 
   const readJsonBody = async <Schema extends z.ZodType>(context: Context, schema: Schema): Promise<z.infer<Schema>> =>
     schema.parse(await context.req.json().catch(() => ({})))
+
+  const booleanQuery = (value: string | undefined, name: string): boolean | undefined => {
+    if (value === undefined) return undefined
+    if (value === 'true' || value === '1') return true
+    if (value === 'false' || value === '0') return false
+    throw new RecordValidationError(`${name} must be true or false.`)
+  }
 
   // ---------- global headers ----------
 
@@ -49,9 +78,6 @@ export function createApplication(dependencies: ApplicationDependencies) {
     context.header('Cross-Origin-Opener-Policy', 'same-origin')
     context.header('Cross-Origin-Resource-Policy', 'same-origin')
     context.header('X-Robots-Tag', 'noindex, nofollow, noarchive')
-    if (dependencies.config?.port && dependencies.config.host !== '127.0.0.1') {
-      // Placeholder: HSTS only becomes meaningful once TLS terminates in front (M7).
-    }
   })
 
   // ---------- API ----------
@@ -63,9 +89,16 @@ export function createApplication(dependencies: ApplicationDependencies) {
   })
 
   app.get('/api/status', (context) => {
-    const status: Status = { ok: true, fabricCount: fabrics.count() }
+    const status: Status = {
+      ok: true,
+      fabricCount: fabrics.count(),
+      patternCount: patterns.count(),
+      notionCount: notions.count(),
+    }
     return context.json(status)
   })
+
+  // Fabric
 
   app.get('/api/fabrics', (context) => {
     const filters: FabricFilters = {}
@@ -76,9 +109,7 @@ export function createApplication(dependencies: ApplicationDependencies) {
     const minLengthMm = context.req.query('minLengthMm')
     if (minLengthMm) {
       const parsed = Number(minLengthMm)
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        throw new RecordValidationError('minLengthMm must be a non-negative number.')
-      }
+      if (!Number.isFinite(parsed) || parsed < 0) throw new RecordValidationError('minLengthMm must be a non-negative number.')
       filters.minLengthMm = Math.floor(parsed)
     }
     return context.json(fabrics.list(filters))
@@ -107,9 +138,131 @@ export function createApplication(dependencies: ApplicationDependencies) {
     return context.json({ ok: true })
   })
 
+  // Pattern (with nested views and requirements)
+
+  app.get('/api/patterns', (context) => {
+    const filters: PatternFilters = {}
+    const brand = context.req.query('brand')
+    if (brand) filters.brand = brand
+    const category = context.req.query('category')
+    if (category) filters.category = category
+    const format = context.req.query('format')
+    if (format) {
+      if (!PATTERN_FORMATS.includes(format as PatternFormat)) throw new RecordValidationError('Unknown format.')
+      filters.format = format as PatternFormat
+    }
+    const triedAndTrue = booleanQuery(context.req.query('triedAndTrue'), 'triedAndTrue')
+    if (triedAndTrue !== undefined) filters.triedAndTrue = triedAndTrue
+    return context.json(patterns.list(filters))
+  })
+
+  app.post('/api/patterns', async (context) => {
+    const input = await readJsonBody(context, patternInputSchema)
+    return context.json(patterns.create(input, nowIso()), 201)
+  })
+
+  app.get('/api/patterns/:patternId', (context) => {
+    const pattern = patterns.get(context.req.param('patternId'))
+    if (!pattern) throw new RecordNotFoundError('No such pattern.')
+    return context.json(pattern)
+  })
+
+  app.put('/api/patterns/:patternId', async (context) => {
+    const input = await readJsonBody(context, patternInputSchema)
+    return context.json(patterns.replace(context.req.param('patternId'), input, nowIso()))
+  })
+
+  app.delete('/api/patterns/:patternId', (context) => {
+    patterns.delete(context.req.param('patternId'))
+    return context.json({ ok: true })
+  })
+
+  app.post('/api/patterns/:patternId/views', async (context) => {
+    const input = await readJsonBody(context, patternViewInputSchema)
+    return context.json(patterns.addView(context.req.param('patternId'), input, nowIso()), 201)
+  })
+
+  app.put('/api/patterns/:patternId/views/:viewId', async (context) => {
+    const input = await readJsonBody(context, patternViewInputSchema)
+    return context.json(patterns.replaceView(context.req.param('patternId'), context.req.param('viewId'), input, nowIso()))
+  })
+
+  app.delete('/api/patterns/:patternId/views/:viewId', (context) => {
+    patterns.deleteView(context.req.param('patternId'), context.req.param('viewId'))
+    return context.json({ ok: true })
+  })
+
+  app.post('/api/patterns/:patternId/views/:viewId/requirements', async (context) => {
+    const input = await readJsonBody(context, patternRequirementInputSchema)
+    return context.json(
+      patterns.addRequirement(context.req.param('patternId'), context.req.param('viewId'), input, nowIso()),
+      201,
+    )
+  })
+
+  app.put('/api/patterns/:patternId/views/:viewId/requirements/:requirementId', async (context) => {
+    const input = await readJsonBody(context, patternRequirementInputSchema)
+    return context.json(
+      patterns.replaceRequirement(
+        context.req.param('patternId'),
+        context.req.param('viewId'),
+        context.req.param('requirementId'),
+        input,
+        nowIso(),
+      ),
+    )
+  })
+
+  app.delete('/api/patterns/:patternId/views/:viewId/requirements/:requirementId', (context) => {
+    patterns.deleteRequirement(
+      context.req.param('patternId'),
+      context.req.param('viewId'),
+      context.req.param('requirementId'),
+      nowIso(),
+    )
+    return context.json({ ok: true })
+  })
+
+  // Notion
+
+  app.get('/api/notions', (context) => {
+    const filters: NotionFilters = {}
+    const kind = context.req.query('kind')
+    if (kind) {
+      if (!NOTION_KINDS.includes(kind as NotionKind)) throw new RecordValidationError('Unknown notion kind.')
+      filters.kind = kind as NotionKind
+    }
+    const location = context.req.query('location')
+    if (location) filters.location = location
+    return context.json(notions.list(filters))
+  })
+
+  app.post('/api/notions', async (context) => {
+    const input = await readJsonBody(context, notionInputSchema)
+    return context.json(notions.create(input, nowIso()), 201)
+  })
+
+  app.get('/api/notions/:notionId', (context) => {
+    const notion = notions.get(context.req.param('notionId'))
+    if (!notion) throw new RecordNotFoundError('No such notion.')
+    return context.json(notion)
+  })
+
+  app.put('/api/notions/:notionId', async (context) => {
+    const input = await readJsonBody(context, notionInputSchema)
+    return context.json(notions.replace(context.req.param('notionId'), input, nowIso()))
+  })
+
+  app.delete('/api/notions/:notionId', (context) => {
+    notions.delete(context.req.param('notionId'))
+    return context.json({ ok: true })
+  })
+
+  // Search
+
   app.get('/api/search', (context) => {
     const query = context.req.query('q') ?? ''
-    const hits: SearchHit[] = fabrics.search(query)
+    const hits: SearchHit[] = searchAll(database, query)
     return context.json(hits)
   })
 
@@ -128,11 +281,10 @@ export function createApplication(dependencies: ApplicationDependencies) {
     if (error instanceof z.ZodError) {
       return context.json({ error: 'invalid_request', message: 'Some fields are missing or invalid.', issues: error.issues }, 400)
     }
-    // Never echo internal errors; log the frames only, never the message.
     const stackFramesOnly = error instanceof Error ? (error.stack ?? '').split('\n').slice(1, 8).join('\n') : ''
     console.error(`Unhandled ${error instanceof Error ? error.name : 'error'}\n${stackFramesOnly}`)
     return context.json({ error: 'server_error', message: 'Something went wrong on the server.' }, 500)
   })
 
-  return { app, fabrics }
+  return { app, fabrics, patterns, notions }
 }

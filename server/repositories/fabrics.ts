@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
-import type { Fabric, FabricFilters, FabricInput, SearchHit } from '../../shared/model'
+import type { Fabric, FabricFilters, FabricInput } from '../../shared/model'
 import { RecordNotFoundError, RecordValidationError } from '../errors'
 
 type Row = Record<string, unknown>
@@ -39,20 +39,20 @@ function toFabric(row: Row): Fabric {
 function valuesOf(input: FabricInput): Array<string | number | null> {
   return [
     input.name,
-    input.fibre ?? null,
-    input.weight ?? null,
-    input.lengthMm ?? null,
-    input.widthMm ?? null,
-    input.originalLengthMm ?? null,
-    input.colour ?? null,
-    input.printType ?? null,
-    input.source ?? null,
-    input.costMinor ?? null,
-    input.currency ?? null,
-    input.acquiredOn ?? null,
-    input.location ?? null,
-    input.care ?? null,
-    input.notes ?? null,
+    input.fibre,
+    input.weight,
+    input.lengthMm,
+    input.widthMm,
+    input.originalLengthMm,
+    input.colour,
+    input.printType,
+    input.source,
+    input.costMinor,
+    input.currency,
+    input.acquiredOn,
+    input.location,
+    input.care,
+    input.notes,
   ]
 }
 
@@ -99,25 +99,27 @@ export class FabricRepository {
 
   create(input: FabricInput, nowIso: string): Fabric {
     const id = randomUUID()
-    const statement = this.database.prepare(
-      `INSERT INTO fabric (id, name, fibre, weight, length_mm, width_mm, original_length_mm,
-        colour, print_type, source, cost_minor, currency, acquired_on, location, care, notes,
-        created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    statement.run(id, ...valuesOf(input), nowIso, nowIso)
+    this.database
+      .prepare(
+        `INSERT INTO fabric (id, name, fibre, weight, length_mm, width_mm, original_length_mm,
+          colour, print_type, source, cost_minor, currency, acquired_on, location, care, notes,
+          created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, ...valuesOf(input), nowIso, nowIso)
     return this.#require(id)
   }
 
   replace(id: string, input: FabricInput, nowIso: string): Fabric {
     this.#require(id)
-    const statement = this.database.prepare(
-      `UPDATE fabric SET name = ?, fibre = ?, weight = ?, length_mm = ?, width_mm = ?,
-        original_length_mm = ?, colour = ?, print_type = ?, source = ?, cost_minor = ?,
-        currency = ?, acquired_on = ?, location = ?, care = ?, notes = ?, updated_at = ?
-       WHERE id = ?`,
-    )
-    statement.run(...valuesOf(input), nowIso, id)
+    this.database
+      .prepare(
+        `UPDATE fabric SET name = ?, fibre = ?, weight = ?, length_mm = ?, width_mm = ?,
+          original_length_mm = ?, colour = ?, print_type = ?, source = ?, cost_minor = ?,
+          currency = ?, acquired_on = ?, location = ?, care = ?, notes = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(...valuesOf(input), nowIso, id)
     return this.#require(id)
   }
 
@@ -125,47 +127,10 @@ export class FabricRepository {
     this.#require(id)
     this.database.prepare('DELETE FROM fabric WHERE id = ?').run(id)
   }
-
-  /** Full-text search across the indexed columns, prefix-matched, best first. */
-  search(query: string, limit = 25): SearchHit[] {
-    const matchQuery = buildMatchQuery(query)
-    if (!matchQuery) return []
-    const rows = this.database
-      .prepare(
-        `SELECT f.id AS id, f.name AS name, f.length_mm AS length_mm,
-                snippet(fabric_fts, 5, '[', ']', ' … ', 10) AS snippet
-           FROM fabric_fts
-           JOIN fabric f ON f.rowid = fabric_fts.rowid
-          WHERE fabric_fts MATCH ?
-          ORDER BY bm25(fabric_fts), f.name ASC
-          LIMIT ?`,
-      )
-      .all(matchQuery, limit) as Row[]
-    return rows.map((row) => ({
-      type: 'fabric' as const,
-      id: String(row.id),
-      title: String(row.name),
-      snippet: nullableText(row.snippet),
-      lengthMm: nullableNumber(row.length_mm),
-    }))
-  }
-}
-
-/**
- * Turn free text into a safe FTS5 MATCH expression: every word becomes a quoted
- * prefix term, joined with AND. Quoting means user punctuation can never be read
- * as FTS5 syntax, which would otherwise throw on a stray `"` or `*`.
- */
-export function buildMatchQuery(query: string): string | null {
-  const words = query.match(/[\p{L}\p{N}]+/gu) ?? []
-  if (words.length === 0) return null
-  return words.map((word) => `"${word}"*`).join(' AND ')
 }
 
 export function assertFabricInvariant(input: FabricInput): void {
-  if (input.lengthMm !== null && input.lengthMm !== undefined && input.originalLengthMm) {
-    if (input.lengthMm > input.originalLengthMm) {
-      throw new RecordValidationError('Remaining length cannot exceed the original length.')
-    }
+  if (input.lengthMm !== null && input.originalLengthMm !== null && input.lengthMm > input.originalLengthMm) {
+    throw new RecordValidationError('Remaining length cannot exceed the original length.')
   }
 }

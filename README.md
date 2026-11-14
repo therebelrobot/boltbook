@@ -27,11 +27,11 @@ machine, without the account or the cloud.
 
 ## Status
 
-**M1 landed.** The store is real: `server/` (config, migrations, the fabric
-repository, the Hono app, the entry point), `shared/model.ts` as the wire contract, and 11
-passing tests. Fabrics have full CRUD and FTS5 search (`GET /api/search?q=`); `npm audit` is
-clean on Node 26.13.1. Auth does not exist yet — the server binds localhost only. M2 (patterns
-and notions) is next per the design's delivery plan. The client is mobile-first.
+**M1–M2 landed.** The store is real: fabrics, patterns (with views and per-view yardage
+requirements), and a notions inventory, each with full CRUD, plus FTS5 search across fabrics and
+patterns. `server/` + `shared/model.ts` + 28 passing tests; `npm audit` clean on Node 26.13.1.
+Auth does not exist yet — the server binds localhost only. M3 (projects and allocation) is next
+per the design's delivery plan. The client is mobile-first.
 
 ## License
 
