@@ -120,3 +120,17 @@ test('bad dimension query values are refused', async () => {
   const fabric = await makeFabric(app)
   assert.equal((await upload(app, fabric.id, PIXEL_BYTES, 'image/png', '?widthPx=wide')).status, 400)
 })
+
+test('the CSP allows blob: images, which the pending-photo preview needs', async () => {
+  const app = await freshApp()
+  const policy = (await app.request('/api/status')).headers.get('content-security-policy') ?? ''
+  // Before upload a preview is a blob URL; without blob: in img-src the browser
+  // blocks it inline and the preview silently never appears — while the same
+  // blob URL still opens fine in a new tab, because navigation is not img-src.
+  const imageSource = policy
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith('img-src'))
+  assert.ok(imageSource, 'no img-src in the policy')
+  assert.match(imageSource, /blob:/)
+})

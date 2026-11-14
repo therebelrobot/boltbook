@@ -135,7 +135,7 @@ then claim the instance again with the setup token.
   provenance and an SBOM. The image was built and run: it serves the client, claims, persists to a
   volume, reports healthy, and survives a restart.
 
-131 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
+132 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
 
 **Not yet:** restoring an export (the export is one-way for now). See `docs/technical-design.md` §11.
 
