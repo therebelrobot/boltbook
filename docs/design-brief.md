@@ -159,12 +159,17 @@ From `gestures`: a gesture has two phases, and mixing them is the usual defect.
 Rules: hit targets **≥ 44 × 44 px** (grow a small one with an invisible `::before` hitbox);
 `touch-action` set on the drag axis; **never a keyframe on a gesture surface**; no bounce on
 something closed by a button (no force was applied), a little bounce on something flung;
-rubber-band at edges instead of a hard stop; ignore extra fingers mid-drag.
+rubber-band at edges instead of a hard stop; ignore extra fingers mid-drag. Swipe-to-delete
+does **not** fight the scroll: a row only commits to a swipe after a ~10 px horizontal-intent
+threshold, so a vertical scroll is never stolen.
 
 ---
 
 ## 7. Components
 
+- **Adding a fabric is camera-first** — the primary action opens the camera; the form follows
+  with what the photo gives, and every field is skippable, because a photo and a name is a
+  valid bolt.
 - **The fabric row** — swatch/photo thumb · name · `fibre · width` · **remaining length** ·
   location. The remaining length is the number the whole app exists to answer.
 - **The yardage meter** — a thin bar: remaining against original, with the reserved slice
@@ -173,6 +178,8 @@ rubber-band at edges instead of a hard stop; ignore extra fingers mid-drag.
   contrast.
 - **The shortfall callout** — when a project needs more than is on hand: the metres short, as a
   calm warning. **No animation** — it is information, and it appears while the user is reading.
+- **Finishing a project** may attach one optional photo of the made garment. Optional, never
+  required, never blocking.
 - **Chips** — fibre, tags. Tappable, with the tap target padded out to 44 px.
 - **Forms** — `inputmode="decimal"` for yardage, `inputmode="numeric"` for counts, 16 px inputs,
   inline validation, `enterkeyhint="done"`.
@@ -195,6 +202,8 @@ rubber-band at edges instead of a hard stop; ignore extra fingers mid-drag.
   scrolling under, and a **scroll-edge fade** instead of a 1 px divider. **Never stack a light
   translucent surface on another.** `prefers-reduced-transparency: reduce` → solid;
   `prefers-contrast: more` → defined borders.
+- **Theme follows the system** (`prefers-color-scheme`). There is no in-app light/dark toggle in
+  v1.
 
 ---
 
@@ -236,13 +245,13 @@ the software keyboard covering a bottom-pinned field · status-bar colour per sc
 
 ---
 
-## 12. Open design questions
+## 12. Decisions
 
-- **Add fabric: camera-first or form-first?** A photo-first flow is faster at the shelf but
-  captures less detail; a form-first flow is slower but complete. Leaning: photo first, fields
-  after, both skippable.
-- **Theme: follow system only, or a manual toggle?** Leaning: system only for v1.
-- **Swipe-to-delete on a scrolling list** — confirm the gesture does not fight the scroll; if it
-  does, fall back to an edit mode with explicit delete buttons.
-- **Does a finished project capture a photo of the garment?** It turns the inventory into a
-  record of what was made. Leaning: yes, one optional photo on `done`.
+Resolved with the author, 2026-11-14:
+
+| Question | Decision | Note |
+|---|---|---|
+| Add fabric: camera-first or form-first? | **Camera-first** | The primary action opens the camera; the form follows and every field is skippable — a photo and a name is a valid bolt. |
+| Theme: system-only or a manual toggle? | **System only** | Follow `prefers-color-scheme`; no in-app toggle in v1. |
+| Does swipe-to-delete fight the list scroll? | **No — the gesture stays** | Gate on horizontal intent (~10 px) so a vertical scroll is never stolen; keep the undo toast. |
+| A photo of the finished garment? | **Yes, and optional** | One optional photo when a project reaches `done`; never required, never blocking. |

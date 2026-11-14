@@ -110,9 +110,9 @@ Fabric and patterns are both first-class from day one, linked.
 - One container behind a reverse proxy with an edge access layer; hostname and port are
   deployment configuration and stay out of the repo.
 - Local storage; export/backup of everything in one file.
-- **Mobile-first.** Designed for the phone held at the shelf — camera capture for fabric
-  photos, bottom navigation, targets sized for a thumb — with the desktop as the second
-  target, not the first.
+- **Mobile-first.** Designed for the phone held at the shelf — adding a fabric starts at the
+  camera and the form follows, bottom navigation, targets sized for a thumb — with the desktop
+  as the second target, not the first.
 
 ### In, v2
 
