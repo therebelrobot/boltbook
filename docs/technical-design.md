@@ -60,15 +60,20 @@ server/
   export.ts        build the zip (json + photos)
   staticAssets.ts  read dist/client into an allow-list at startup
 client/
-  main.tsx  App.tsx  router.ts  api.ts  styles.css
-  screens/   Stash, FabricEditor, Patterns, PatternEditor, Notions,
-             Projects, ProjectEditor, Search, Settings, Access
-  components/
+  main.tsx  App.tsx  router.ts  api.ts  styles.css  useCollection.ts
+  fields.ts        field descriptors per entity, so every editor is one component
+  format.ts        display helpers (pure, unit-tested)
+  units.ts         metric ↔ imperial (pure, unit-tested)
+  photo.ts         downscale + EXIF strip, client-side
+  components/      AppShell, Sheet (drag-to-dismiss), EntitySheet, PhotoField, Toast
+  screens/         Access, Stash, Patterns, Projects, Search, Settings
 shared/
   model.ts         types shared by server and client (the wire contract)
-  units.ts         mm ↔ display, cost ↔ display
 test/
 ```
+
+Server extras beyond the repositories: `staticAssets.ts` (the built client as an allow-list) and
+`units.ts` (the wire unit mode, §5).
 
 The split is the house split: `server/` never imports `client/`; both import `shared/`.
 
@@ -80,6 +85,8 @@ mechanism as `reframe/server/database.ts`.
 
 Conventions: ids are random UUIDv4 text; lengths are **integer millimetres**; money is
 `cost_minor INTEGER` + `currency TEXT`; dates are ISO-8601 text; timestamps are ISO-8601 UTC.
+Metric is canonical — §5 gives the imperial mode for API callers, and the client converts for
+display.
 
 ```
 fabric(id PK, name, fibre, weight, colour, print_type, width_mm,
@@ -209,6 +216,34 @@ GET    /api/audit
 
 Errors are `{ error, message }` with a stable `error` code; validation errors add `issues`.
 
+### Units on the wire
+
+**Storage is canonical metric** — integer millimetres for fabric, requirements and allocations;
+metres for thread — so nothing is lossy and the schema never carries a unit.
+
+A caller may then work in imperial. `?units=imperial` on any read **renames** each measure to its
+unit-suffixed form and converts it (`lengthMm` → `lengthYd`, `widthMm` → `widthIn`), and writes
+accept those same names:
+
+```sh
+# how much linen is left?
+curl -s 'http://<docker-host>/api/fabrics?units=imperial' -H 'x-boltbook-request: 1'
+#   → { "name": "Washed linen", "lengthYd": 2.73, "widthIn": 55.12, … }
+
+# add three yards
+curl -s -X POST 'http://<docker-host>/api/fabrics' -H 'content-type: application/json' \
+     -H 'x-boltbook-request: 1' -d '{"name":"Linen","lengthYd":3}'
+```
+
+The rename is the point: `lengthMm: 2.73` would be a lie, and a script that forgot the query
+flag could not misread `lengthYd`. Supplying **both** names for one measure is a `400` rather
+than a silent preference. Metric is the default, so nothing existing changes.
+
+Shortfall lines carry their own `unit` (`"yd"`, or `null` for a count), so a converted number is
+never left standing alone. The web client does not use this mode — it converts locally for
+display and talks metric, so it can render a record without a second round trip (design brief §8).
+
+
 ## 6. Search
 
 SQLite **FTS5** — verified present in Node 26.13.1's bundled SQLite (3.54.1) at M1, so the
@@ -314,8 +349,8 @@ land at M5.
 | M3 | Projects | projects, allocation across fabric/thread/notions, `shortfall.ts` with unit tests — **done** |
 | M4 | Auth | setup/login/logout/passphrase/TOTP, sessions, rate limit, guards — **done** |
 | M4b | Photos | fabric_photo, raw-bytes upload, serve by id, delete, cascade — **done** |
-| M5 | Client | Stash, Patterns, Notions, Projects, Search, Settings, Access screens |
-| M6 | Export + audit | zip export, audit log, backup doc |
+| M5 | Client | React + Vite, mobile-first: shell, access, stash with camera-first photos, patterns, projects with allocation, search, settings, units — **done** |
+| M6 | Export + audit | zip export, backup doc |
 | M7 | Ship | Dockerfile (multi-stage), compose, reverse proxy notes, deploy |
 
 Auth (M4) could land before M1's later parts; the plan keeps it early enough that nothing ships

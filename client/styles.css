@@ -1,0 +1,633 @@
+/*
+ * boltbook — client styles.
+ *
+ * Mobile-first (docs/design-brief.md §3–§5): the phone at the shelf is the
+ * design. The first block is the mobile-native baseline (§4) — viewport height,
+ * tap highlight, overscroll, input zoom, tap delay. Everything after it is the
+ * app. Nothing here animates data; only press feedback, sheets and toasts move.
+ */
+
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --bg: #fbfaf8;
+  --surface: #ffffff;
+  --surface-2: #f2f0ec;
+  --text: #1b1a18;
+  --text-muted: #6b6862;
+  --line: #e2ded6;
+  --accent: #7a5c3e;
+  --accent-contrast: #fffdf9;
+  --warn: #9a5b16;
+  --danger: #a33a2c;
+  --chrome: rgba(251, 250, 248, 0.72);
+  --chrome-line: rgba(0, 0, 0, 0.06);
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141312;
+    --surface: #1e1c1a;
+    --surface-2: #262320;
+    --text: #f2efea;
+    --text-muted: #a19c94;
+    --line: #332f2b;
+    --accent: #c9a075;
+    --accent-contrast: #1b1a18;
+    --warn: #e0a45f;
+    --danger: #e08a7c;
+    --chrome: rgba(20, 19, 18, 0.72);
+    --chrome-line: rgba(255, 255, 255, 0.08);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* ---------- the mobile-native floor ---------- */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+input,
+textarea,
+select {
+  font-size: 16px; /* below this, iOS zooms on focus and never zooms back */
+}
+button,
+a,
+[role='button'] {
+  touch-action: manipulation; /* no 300 ms delay waiting for a double tap */
+}
+button,
+[role='button'] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 100% / 1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-optical-sizing: auto;
+}
+
+/* ---------- app shell ---------- */
+#root {
+  height: 100dvh;
+}
+
+.shell {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: calc(0.5rem + env(safe-area-inset-top, 0px)) 1rem 0.5rem;
+  background: var(--chrome);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--chrome-line);
+}
+.header h1 {
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+  margin: 0;
+  flex: 1;
+  font-weight: 650;
+}
+.header .sub {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  letter-spacing: 0;
+}
+
+.main {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.75rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  -webkit-overflow-scrolling: touch;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom, 0px));
+  background: var(--chrome);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid var(--chrome-line);
+}
+.tab {
+  flex: 1;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 0.6875rem;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.tab[aria-current='true'] {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tab:active {
+  transform: scale(0.97);
+}
+.tab .glyph {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+/* ---------- controls ---------- */
+button {
+  font: inherit;
+  color: inherit;
+}
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+  transition: transform 140ms var(--ease-out), background 140ms var(--ease-out);
+}
+.button:active {
+  transform: scale(0.97);
+  background: var(--surface-2);
+}
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+.button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: transparent;
+}
+.button.plain {
+  border-color: transparent;
+  background: none;
+}
+.button:disabled {
+  opacity: 0.5;
+}
+
+.fab {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  z-index: 3;
+  min-height: 52px;
+  padding: 0 1.1rem;
+  border-radius: 999px;
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 140ms var(--ease-out);
+}
+.fab:active {
+  transform: scale(0.96);
+}
+
+.segmented {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--surface-2);
+  border-radius: 999px;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+}
+.segmented button {
+  flex: 1;
+  min-height: 36px;
+  white-space: nowrap;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: transform 140ms var(--ease-out);
+}
+.segmented button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.segmented button:active {
+  transform: scale(0.97);
+}
+
+/* ---------- rows ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem;
+  min-height: 64px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 140ms var(--ease-out), background 140ms var(--ease-out);
+}
+.row:last-child {
+  border-bottom: 0;
+}
+.row:active {
+  transform: scale(0.985);
+  background: var(--surface-2);
+}
+.row .body {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+.row .title {
+  display: block;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row .meta {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row .right {
+  display: block;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+  flex: 0 0 auto;
+}
+.row .right .sub {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.swatch {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* The yardage meter: remaining against original, with the reserved slice marked. */
+.meter {
+  margin-top: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+  display: flex;
+}
+.meter .remaining {
+  background: var(--accent);
+}
+.meter .reserved {
+  background: var(--warn);
+  opacity: 0.55;
+}
+
+.chip {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-right: 0.25rem;
+}
+
+.warn-line {
+  color: var(--warn);
+  font-size: 0.8125rem;
+}
+.short-line {
+  color: var(--danger);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* ---------- forms ---------- */
+.field {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+.field .label {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+.field input:not([type='checkbox']),
+.field select,
+.field textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.field textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+.field.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+}
+.field.checkbox input {
+  width: 22px;
+  height: 22px;
+}
+
+/* ---------- sheet ---------- */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-end;
+  animation: fade 200ms var(--ease-out);
+}
+.sheet {
+  width: 100%;
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 18px 18px 0 0;
+  box-shadow: var(--shadow);
+  animation: sheet-in 260ms var(--ease-drawer);
+}
+.sheet .grab {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  margin: 0.5rem auto 0;
+}
+.sheet header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+}
+.sheet header h2 {
+  flex: 1;
+  font-size: 1rem;
+  margin: 0;
+}
+.sheet .content {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+.sheet .actions {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(12%);
+    opacity: 0.6;
+  }
+}
+
+/* ---------- toast ---------- */
+.toasts {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: var(--shadow);
+  transition: opacity 400ms ease, transform 400ms ease;
+  animation: toast-in 400ms var(--ease-out);
+}
+.toast button {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+/* ---------- misc ---------- */
+.empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 2.5rem 1rem;
+}
+.empty .button {
+  margin-top: 0.75rem;
+}
+.muted {
+  color: var(--text-muted);
+}
+.error {
+  color: var(--danger);
+  font-size: 0.875rem;
+  margin: 0.5rem 0;
+}
+.center {
+  max-width: 26rem;
+  margin: 8vh auto 0;
+  padding: 0 1.25rem;
+}
+.centre-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+.counts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.counts .metric {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 0.625rem 0.75rem;
+}
+.counts .metric b {
+  display: block;
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+.counts .metric span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+.photo-grid figure {
+  position: relative;
+  margin: 0;
+}
+.photo-grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  display: block;
+}
+.photo-grid button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+}
+
+/* Only real pointers get hover, and only where it aids the design. */
+@media (hover: hover) and (pointer: fine) {
+  .row:hover {
+    background: var(--surface-2);
+  }
+  .button:hover {
+    background: var(--surface-2);
+  }
+  .button.primary:hover {
+    filter: brightness(1.05);
+  }
+  .tab:hover {
+    color: var(--text);
+  }
+}
+
+/* Two panes once there is room; the same tree, not a second design. */
+@media (min-width: 900px) {
+  .main {
+    max-width: 46rem;
+    margin: 0 auto;
+  }
+  .fab {
+    right: max(1rem, calc(50vw - 23rem + 1rem));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .header,
+  .tabs {
+    background: var(--bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}

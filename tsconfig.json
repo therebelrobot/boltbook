@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -15,5 +16,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["server", "shared", "test", "scripts"]
+  "include": ["server", "shared", "client", "test", "scripts", "vite.config.ts"]
 }

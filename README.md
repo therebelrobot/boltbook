@@ -2,42 +2,112 @@
 
 **Every bolt, every pattern, in one book.**
 
-A self-hosted fabric-stash and sewing-pattern library: catalogue the fabric, patterns and
-notions you already own, keep the details that matter — yardage, fibre, colour, size range,
-what you have made from it — and find what you have when a new project starts.
+A self-hosted fabric-stash and sewing-pattern library: catalogue the fabric, patterns, thread,
+notions and tools you already own, keep the details that matter — yardage, fibre, colour, size
+range, what you have made from it — and find what you have when a new project starts.
 
-Local-first, no account, runs on your own box.
+Local-first, no account, runs on your own box. Mobile-first: designed for the phone at the shelf.
+
+## Screenshots
+
+| | | |
+|---|---|---|
+| ![Sign in](docs/screenshots/01-sign-in.png) | ![The stash](docs/screenshots/02-stash.png) | ![Adding a fabric](docs/screenshots/03-add-fabric.png) |
+| **Sign in** — one person, one passphrase | **The stash** — remaining yardage at a glance | **Adding a fabric** — camera-first, every field skippable |
+| ![Patterns](docs/screenshots/04-patterns.png) | ![Projects](docs/screenshots/05-projects.png) | ![Allocation](docs/screenshots/06-project-allocation.png) |
+| **Patterns** — the library you already own | **Projects** — what you are making | **Allocation** — shortfalls and too-narrow fabric, named before you cut |
+| ![Search](docs/screenshots/07-search.png) | ![Settings](docs/screenshots/08-settings.png) | ![Imperial](docs/screenshots/09-stash-imperial.png) |
+| **Search** — across fabric, patterns, thread and tools | **Settings** — units, authenticator, activity | **Imperial** — lengths read in yards and inches |
 
 ## Where it fits
 
-`boltbook` is the companion to [dressform](https://github.com/therebelrobot/dressform), and
-they do different jobs:
+`boltbook` is the companion to [dressform](https://github.com/therebelrobot/dressform), and they
+do different jobs:
 
 | | job |
 |---|---|
 | **dressform** | draft and design a pattern — 2D flat sheet, emitted FreeSewing source, 3D drape and fit |
 | **boltbook** (this) | keep what you already own — the stash and the pattern library |
 
-boltbook is **not** a drafting tool. It never draws a piece or drafts a garment. It records
-the fabric on the shelf and the patterns in the box, and answers the question a project
-starts with: *do I already have this?*
+boltbook is **not** a drafting tool. It never draws a piece or drafts a garment. It records the
+fabric on the shelf and the patterns in the box, and answers the question a project starts with:
+*do I already have this?*
 
-The scope is the parts of Threadloop and Stash Hub that matter to one person on their own
-machine, without the account or the cloud.
+## What it does
+
+- **Fabric** — fibre, weight, colour, print, yardage (remaining and bought), width, source, care,
+  location, photos. A bolt splits as you use it, and the yardage comes off it when a project is
+  finished.
+- **Patterns** — brand, number, format, size range, difficulty, category, plus **views**, each
+  with its own yardage requirements and notions.
+- **Thread** and **tools** as first-class records — thread with brand, colour code, fibre, spools
+  and metres left; tools with a category and a needs-attention flag.
+- **Notions** — buttons, zippers, interfacing, elastic, trims.
+- **Projects** — allocate fabric, thread and notions to a pattern view, and the **shortfall**
+  readout names what is short (remaining minus what other live projects reserve) and what is too
+  narrow, before you cut.
+- **Search** across everything, ranked.
+
+## Units
+
+**Storage is metric** — integer millimetres, metres — and nothing is lossy. The interface shows
+and accepts either metric or imperial (fabric in yards, width in inches, thread in yards), chosen
+in Settings and remembered on the device; the default follows the browser locale.
+
+Scripts can do the same over the API: `?units=imperial` renames each measure to its unit-suffixed
+form (`lengthMm` → `lengthYd`, `widthMm` → `widthIn`) and converts it, and writes accept those
+names back. See `docs/technical-design.md` §5.
+
+## Run it
+
+```sh
+npm install
+npm run build
+BOLTBOOK_SETUP_TOKEN=pick-something npm start   # prints the token, then claim it in the browser
+```
+
+The server serves the built client and the API on one port. Without `BOLTBOOK_SETUP_TOKEN` it
+generates one and prints it; the token is only used to claim the instance the first time. To try
+it with demo data:
+
+```sh
+BOLTBOOK_URL=http://127.0.0.1:8080 BOLTBOOK_SETUP_TOKEN=<token> \
+BOLTBOOK_PASSPHRASE='at least twelve characters' node --import tsx scripts/seed-demo.ts
+```
+
+Configuration is environment-only: `BOLTBOOK_DATA_DIR`, `BOLTBOOK_DB`, `BOLTBOOK_PORT`,
+`BOLTBOOK_HOST`, `BOLTBOOK_COOKIE_SECURE`, `BOLTBOOK_TRUST_PROXY`, `BOLTBOOK_PUBLIC_ORIGIN`,
+`BOLTBOOK_SESSION_IDLE_MINUTES`, `BOLTBOOK_SESSION_MAX_HOURS`, `BOLTBOOK_SETUP_TOKEN`.
+
+**Lost the passphrase?** There is no recovery code — nothing is encrypted, so there is no key to
+recover. `npm run reset-passphrase -- --yes` clears the account (your records are untouched),
+then claim the instance again with the setup token.
 
 ## Status
 
-**M1–M4b landed.** The backend is complete: fabrics (with photos), patterns (with views and
-per-view yardage requirements), notions, thread and tools, each with full CRUD, plus FTS5 search
-across the four indexed entities. Projects allocate fabric, thread and notions, and the shortfall
-readout reports what is short (remaining minus what other live projects reserve) and what is too
-narrow.
+**M1–M5 landed.** The backend and the client are both real:
 
-Access is the house single-user model minus the vault: a one-time setup token claims the
-instance, then a passphrase (optional TOTP) with a `__Host-` session cookie, rate limiting, an
-audit log, and a `reset-passphrase` script. 81 passing tests; `npm audit` clean on Node 26.13.1.
-The client (M5) is next, and it does the photo downscaling and EXIF stripping. The client is
-mobile-first.
+- **Server** — fabrics (with photos), patterns with views and requirements, notions, thread and
+  tools, projects with allocation and the shortfall rule, and FTS5 search across all four indexed
+  entities. Single-user auth in the house model: a setup token claims the instance, then a
+  passphrase with optional TOTP, `__Host-` sessions, rate limiting and an audit log.
+- **Client** — React + Vite, mobile-first: bottom navigation, camera-first fabric capture with
+  client-side downscale and EXIF stripping, drag-to-dismiss sheets, swipe-free delete with undo,
+  and the yardage meter. All verified in a real browser (the screenshots above).
+
+100 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
+
+**Not yet:** docker image and deployment notes (M7); the pattern views and requirements are read
+in the client but edited only through the API for now. See `docs/technical-design.md` §11.
+
+## Docs
+
+| Document | Owns |
+|---|---|
+| `docs/product-brief.md` | why this exists, the scope, v1 vs v2 |
+| `docs/technical-design.md` | modules, the data model, the seams, the plan |
+| `docs/design-brief.md` | how the client looks, moves and feels |
+| `docs/adr/0001-no-encryption-at-rest.md` | the decision, and what it costs |
 
 ## License
 

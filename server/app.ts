@@ -16,6 +16,20 @@ import { ThreadRepository, assertThreadInvariant } from './repositories/threads'
 import { ToolRepository } from './repositories/tools'
 import { ProjectRepository } from './repositories/projects'
 import { searchAll } from './repositories/search'
+import {
+  FABRIC_ALLOCATION_MEASURES,
+  FABRIC_MEASURES,
+  REQUIREMENT_MEASURES,
+  THREAD_ALLOCATION_MEASURES,
+  THREAD_MEASURES,
+  normalizeMeasures,
+  parseUnits,
+  presentMeasures,
+  presentShortfallLines,
+  type MeasureSpec,
+  type Units,
+} from './units'
+import type { StaticAsset } from './staticAssets'
 import { buildOtpauthUri } from './crypto/totp'
 import {
   allocationsInputSchema,
@@ -39,8 +53,10 @@ import type {
   FabricFilters,
   NotionFilters,
   NotionKind,
+  Pattern,
   PatternFilters,
   PatternFormat,
+  Project,
   ProjectFilters,
   ProjectStatus,
   SearchHit,
@@ -91,6 +107,7 @@ const STATUS_BY_AUTH_ERROR = {
 export interface ApplicationDependencies {
   database: Database
   config: ServerConfig
+  staticAssets?: Map<string, StaticAsset>
   currentTimeMilliseconds?: () => number
 }
 
@@ -164,6 +181,49 @@ export function createApplication(dependencies: ApplicationDependencies) {
 
   const readJsonBody = async <Schema extends z.ZodType>(context: Context, schema: Schema): Promise<z.infer<Schema>> =>
     schema.parse(await context.req.json().catch(() => ({})))
+
+  /** Reads a body, converting any imperial measure fields to canonical metric first. */
+  const readMeasuredBody = async <Schema extends z.ZodType>(
+    context: Context,
+    schema: Schema,
+    specs: readonly MeasureSpec[],
+  ): Promise<z.infer<Schema>> => {
+    const raw = (await context.req.json().catch(() => ({}))) as Record<string, unknown>
+    return schema.parse(normalizeMeasures(raw, specs))
+  }
+
+  const unitsOf = (context: Context): Units => parseUnits(context.req.query('units'))
+
+  /** Measures nested inside a pattern's views move together with the top-level ones. */
+  const presentPattern = (pattern: Pattern, units: Units): Pattern => {
+    if (units === 'metric') return pattern
+    return {
+      ...pattern,
+      views: pattern.views.map((view) => ({
+        ...view,
+        requirements: view.requirements.map((requirement) =>
+          presentMeasures(requirement as unknown as Record<string, unknown>, REQUIREMENT_MEASURES, units),
+        ),
+      })),
+    } as unknown as Pattern
+  }
+
+  /** Likewise a project's allocations. */
+  const presentProject = (project: Project, units: Units): Project => {
+    if (units === 'metric') return project
+    return {
+      ...project,
+      allocations: {
+        fabrics: project.allocations.fabrics.map((allocation) =>
+          presentMeasures(allocation as unknown as Record<string, unknown>, FABRIC_ALLOCATION_MEASURES, units),
+        ),
+        threads: project.allocations.threads.map((allocation) =>
+          presentMeasures(allocation as unknown as Record<string, unknown>, THREAD_ALLOCATION_MEASURES, units),
+        ),
+        notions: project.allocations.notions,
+      },
+    } as unknown as Project
+  }
 
   const booleanQuery = (value: string | undefined, name: string): boolean | undefined => {
     if (value === undefined) return undefined
@@ -365,25 +425,26 @@ export function createApplication(dependencies: ApplicationDependencies) {
       if (!Number.isFinite(parsed) || parsed < 0) throw new RecordValidationError('minLengthMm must be a non-negative number.')
       filters.minLengthMm = Math.floor(parsed)
     }
-    return context.json(fabrics.list(filters))
+    const units = unitsOf(context)
+    return context.json(fabrics.list(filters).map((fabric) => presentMeasures(fabric, FABRIC_MEASURES, units)))
   })
 
   app.post('/api/fabrics', async (context) => {
-    const input = await readJsonBody(context, fabricInputSchema)
+    const input = await readMeasuredBody(context, fabricInputSchema, FABRIC_MEASURES)
     assertFabricInvariant(input)
-    return context.json(fabrics.create(input, nowIso()), 201)
+    return context.json(presentMeasures(fabrics.create(input, nowIso()), FABRIC_MEASURES, unitsOf(context)), 201)
   })
 
   app.get('/api/fabrics/:fabricId', (context) => {
     const fabric = fabrics.get(context.req.param('fabricId'))
     if (!fabric) throw new RecordNotFoundError('No such fabric.')
-    return context.json(fabric)
+    return context.json(presentMeasures(fabric, FABRIC_MEASURES, unitsOf(context)))
   })
 
   app.put('/api/fabrics/:fabricId', async (context) => {
-    const input = await readJsonBody(context, fabricInputSchema)
+    const input = await readMeasuredBody(context, fabricInputSchema, FABRIC_MEASURES)
     assertFabricInvariant(input)
-    return context.json(fabrics.replace(context.req.param('fabricId'), input, nowIso()))
+    return context.json(presentMeasures(fabrics.replace(context.req.param('fabricId'), input, nowIso()), FABRIC_MEASURES, unitsOf(context)))
   })
 
   app.delete('/api/fabrics/:fabricId', (context) => {
@@ -434,23 +495,24 @@ export function createApplication(dependencies: ApplicationDependencies) {
     }
     const triedAndTrue = booleanQuery(context.req.query('triedAndTrue'), 'triedAndTrue')
     if (triedAndTrue !== undefined) filters.triedAndTrue = triedAndTrue
-    return context.json(patterns.list(filters))
+    const units = unitsOf(context)
+    return context.json(patterns.list(filters).map((pattern) => presentPattern(pattern, units)))
   })
 
   app.post('/api/patterns', async (context) => {
     const input = await readJsonBody(context, patternInputSchema)
-    return context.json(patterns.create(input, nowIso()), 201)
+    return context.json(presentPattern(patterns.create(input, nowIso()), unitsOf(context)), 201)
   })
 
   app.get('/api/patterns/:patternId', (context) => {
     const pattern = patterns.get(context.req.param('patternId'))
     if (!pattern) throw new RecordNotFoundError('No such pattern.')
-    return context.json(pattern)
+    return context.json(presentPattern(pattern, unitsOf(context)))
   })
 
   app.put('/api/patterns/:patternId', async (context) => {
     const input = await readJsonBody(context, patternInputSchema)
-    return context.json(patterns.replace(context.req.param('patternId'), input, nowIso()))
+    return context.json(presentPattern(patterns.replace(context.req.param('patternId'), input, nowIso()), unitsOf(context)))
   })
 
   app.delete('/api/patterns/:patternId', (context) => {
@@ -474,24 +536,21 @@ export function createApplication(dependencies: ApplicationDependencies) {
   })
 
   app.post('/api/patterns/:patternId/views/:viewId/requirements', async (context) => {
-    const input = await readJsonBody(context, patternRequirementInputSchema)
-    return context.json(
-      patterns.addRequirement(context.req.param('patternId'), context.req.param('viewId'), input, nowIso()),
-      201,
-    )
+    const input = await readMeasuredBody(context, patternRequirementInputSchema, REQUIREMENT_MEASURES)
+    const requirement = patterns.addRequirement(context.req.param('patternId'), context.req.param('viewId'), input, nowIso())
+    return context.json(presentMeasures(requirement as unknown as Record<string, unknown>, REQUIREMENT_MEASURES, unitsOf(context)), 201)
   })
 
   app.put('/api/patterns/:patternId/views/:viewId/requirements/:requirementId', async (context) => {
-    const input = await readJsonBody(context, patternRequirementInputSchema)
-    return context.json(
-      patterns.replaceRequirement(
-        context.req.param('patternId'),
-        context.req.param('viewId'),
-        context.req.param('requirementId'),
-        input,
-        nowIso(),
-      ),
+    const input = await readMeasuredBody(context, patternRequirementInputSchema, REQUIREMENT_MEASURES)
+    const requirement = patterns.replaceRequirement(
+      context.req.param('patternId'),
+      context.req.param('viewId'),
+      context.req.param('requirementId'),
+      input,
+      nowIso(),
     )
+    return context.json(presentMeasures(requirement as unknown as Record<string, unknown>, REQUIREMENT_MEASURES, unitsOf(context)))
   })
 
   app.delete('/api/patterns/:patternId/views/:viewId/requirements/:requirementId', (context) => {
@@ -549,25 +608,26 @@ export function createApplication(dependencies: ApplicationDependencies) {
     if (fibre) filters.fibre = fibre
     const location = context.req.query('location')
     if (location) filters.location = location
-    return context.json(threads.list(filters))
+    const units = unitsOf(context)
+    return context.json(threads.list(filters).map((thread) => presentMeasures(thread, THREAD_MEASURES, units)))
   })
 
   app.post('/api/threads', async (context) => {
-    const input = await readJsonBody(context, threadInputSchema)
+    const input = await readMeasuredBody(context, threadInputSchema, THREAD_MEASURES)
     assertThreadInvariant(input)
-    return context.json(threads.create(input, nowIso()), 201)
+    return context.json(presentMeasures(threads.create(input, nowIso()), THREAD_MEASURES, unitsOf(context)), 201)
   })
 
   app.get('/api/threads/:threadId', (context) => {
     const thread = threads.get(context.req.param('threadId'))
     if (!thread) throw new RecordNotFoundError('No such thread.')
-    return context.json(thread)
+    return context.json(presentMeasures(thread, THREAD_MEASURES, unitsOf(context)))
   })
 
   app.put('/api/threads/:threadId', async (context) => {
-    const input = await readJsonBody(context, threadInputSchema)
+    const input = await readMeasuredBody(context, threadInputSchema, THREAD_MEASURES)
     assertThreadInvariant(input)
-    return context.json(threads.replace(context.req.param('threadId'), input, nowIso()))
+    return context.json(presentMeasures(threads.replace(context.req.param('threadId'), input, nowIso()), THREAD_MEASURES, unitsOf(context)))
   })
 
   app.delete('/api/threads/:threadId', (context) => {
@@ -621,23 +681,24 @@ export function createApplication(dependencies: ApplicationDependencies) {
       if (!PROJECT_STATUSES.includes(status as ProjectStatus)) throw new RecordValidationError('Unknown project status.')
       filters.status = status as ProjectStatus
     }
-    return context.json(projects.list(filters))
+    const units = unitsOf(context)
+    return context.json(projects.list(filters).map((project) => presentProject(project, units)))
   })
 
   app.post('/api/projects', async (context) => {
     const input = await readJsonBody(context, projectInputSchema)
-    return context.json(projects.create(input, nowIso()), 201)
+    return context.json(presentProject(projects.create(input, nowIso()), unitsOf(context)), 201)
   })
 
   app.get('/api/projects/:projectId', (context) => {
     const project = projects.get(context.req.param('projectId'))
     if (!project) throw new RecordNotFoundError('No such project.')
-    return context.json(project)
+    return context.json(presentProject(project, unitsOf(context)))
   })
 
   app.put('/api/projects/:projectId', async (context) => {
     const input = await readJsonBody(context, projectInputSchema)
-    return context.json(projects.replace(context.req.param('projectId'), input, nowIso()))
+    return context.json(presentProject(projects.replace(context.req.param('projectId'), input, nowIso()), unitsOf(context)))
   })
 
   app.delete('/api/projects/:projectId', (context) => {
@@ -646,13 +707,22 @@ export function createApplication(dependencies: ApplicationDependencies) {
   })
 
   app.put('/api/projects/:projectId/allocations', async (context) => {
-    const input = await readJsonBody(context, allocationsInputSchema)
-    return context.json(projects.setAllocations(context.req.param('projectId'), input, nowIso()))
+    const raw = (await context.req.json().catch(() => ({}))) as {
+      fabrics?: Array<Record<string, unknown>>
+      threads?: Array<Record<string, unknown>>
+      notions?: Array<Record<string, unknown>>
+    }
+    const input = allocationsInputSchema.parse({
+      fabrics: (raw.fabrics ?? []).map((entry) => normalizeMeasures(entry, FABRIC_ALLOCATION_MEASURES)),
+      threads: (raw.threads ?? []).map((entry) => normalizeMeasures(entry, THREAD_ALLOCATION_MEASURES)),
+      notions: raw.notions ?? [],
+    })
+    return context.json(presentProject(projects.setAllocations(context.req.param('projectId'), input, nowIso()), unitsOf(context)))
   })
 
   app.get('/api/projects/:projectId/shortfall', (context) => {
     const lines: ShortfallLine[] = projects.shortfall(context.req.param('projectId'))
-    return context.json({ lines })
+    return context.json(presentShortfallLines(lines, unitsOf(context)))
   })
 
   // Search
@@ -665,9 +735,19 @@ export function createApplication(dependencies: ApplicationDependencies) {
 
   app.all('/api/*', (context) => context.json({ error: 'not_found', message: 'No such endpoint.' }, 404))
 
-  // ---------- static client (M5) ----------
+  // ---------- static client ----------
 
-  app.get('*', (context) => context.text('Client not built. Run npm run build.', 503))
+  app.get('*', (context) => {
+    const staticAssets = dependencies.staticAssets
+    const requestedPath = context.req.path
+    const asset = staticAssets?.get(requestedPath) ?? staticAssets?.get('/index.html')
+    if (!staticAssets || !asset) return context.text('Client not built. Run npm run build.', 503)
+    context.header('Content-Type', asset.contentType)
+    // Fingerprinted assets are immutable; index.html must never be cached.
+    const isFingerprintedRequest = staticAssets.has(requestedPath) && asset.isFingerprinted
+    context.header('Cache-Control', isFingerprintedRequest ? 'public, max-age=31536000, immutable' : 'no-cache')
+    return context.body(new Uint8Array(asset.body))
+  })
 
   // ---------- errors ----------
 

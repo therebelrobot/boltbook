@@ -25,7 +25,7 @@ const upload = (app: Client, fabricId: string, bytes: Buffer, contentType = 'ima
   app.request(`/api/fabrics/${fabricId}/photos${query}`, {
     method: 'POST',
     headers: { 'content-type': contentType },
-    body: bytes,
+    body: new Uint8Array(bytes),
   })
 
 test('upload a photo and read it back', async () => {

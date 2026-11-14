@@ -204,6 +204,11 @@ threshold, so a vertical scroll is never stolen.
   `prefers-contrast: more` → defined borders.
 - **Theme follows the system** (`prefers-color-scheme`). There is no in-app light/dark toggle in
   v1.
+- **Units are a device preference.** Lengths are stored metric; the interface shows and accepts
+  either metric or imperial (fabric in yards, width in inches, thread in yards), chosen in
+  Settings and remembered on the device. The default follows the browser locale — `en-US` gets
+  imperial. A length the user did not touch is sent back exactly as stored, so opening an editor
+  and saving can never quietly move 2500 mm to 2496.
 
 ---
 
