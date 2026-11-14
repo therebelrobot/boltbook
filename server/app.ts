@@ -6,6 +6,8 @@ import type { ServerConfig } from './config'
 import { FabricRepository, assertFabricInvariant } from './repositories/fabrics'
 import { PatternRepository } from './repositories/patterns'
 import { NotionRepository } from './repositories/notions'
+import { ThreadRepository, assertThreadInvariant } from './repositories/threads'
+import { ToolRepository } from './repositories/tools'
 import { searchAll } from './repositories/search'
 import {
   fabricInputSchema,
@@ -13,6 +15,8 @@ import {
   patternInputSchema,
   patternRequirementInputSchema,
   patternViewInputSchema,
+  threadInputSchema,
+  toolInputSchema,
 } from './schemas'
 import { RecordConflictError, RecordNotFoundError, RecordValidationError } from './errors'
 import type {
@@ -23,6 +27,9 @@ import type {
   PatternFormat,
   SearchHit,
   Status,
+  ThreadFilters,
+  ToolCategory,
+  ToolFilters,
 } from '../shared/model'
 
 const CONTENT_SECURITY_POLICY = [
@@ -39,7 +46,8 @@ const CONTENT_SECURITY_POLICY = [
 ].join('; ')
 
 const PATTERN_FORMATS: readonly PatternFormat[] = ['envelope', 'pdf', 'book', 'other']
-const NOTION_KINDS: readonly NotionKind[] = ['thread', 'button', 'zipper', 'interfacing', 'elastic', 'trim', 'other']
+const NOTION_KINDS: readonly NotionKind[] = ['button', 'zipper', 'interfacing', 'elastic', 'trim', 'other']
+const TOOL_CATEGORIES: readonly ToolCategory[] = ['cutting', 'measuring', 'pressing', 'machine', 'marking', 'needles_pins', 'other']
 
 export interface ApplicationDependencies {
   database: Database
@@ -55,6 +63,8 @@ export function createApplication(dependencies: ApplicationDependencies) {
   const fabrics = new FabricRepository(database)
   const patterns = new PatternRepository(database)
   const notions = new NotionRepository(database)
+  const threads = new ThreadRepository(database)
+  const tools = new ToolRepository(database)
   const app = new Hono()
 
   const readJsonBody = async <Schema extends z.ZodType>(context: Context, schema: Schema): Promise<z.infer<Schema>> =>
@@ -94,6 +104,8 @@ export function createApplication(dependencies: ApplicationDependencies) {
       fabricCount: fabrics.count(),
       patternCount: patterns.count(),
       notionCount: notions.count(),
+      threadCount: threads.count(),
+      toolCount: tools.count(),
     }
     return context.json(status)
   })
@@ -258,6 +270,79 @@ export function createApplication(dependencies: ApplicationDependencies) {
     return context.json({ ok: true })
   })
 
+  // Thread
+
+  app.get('/api/threads', (context) => {
+    const filters: ThreadFilters = {}
+    const colour = context.req.query('colour')
+    if (colour) filters.colour = colour
+    const fibre = context.req.query('fibre')
+    if (fibre) filters.fibre = fibre
+    const location = context.req.query('location')
+    if (location) filters.location = location
+    return context.json(threads.list(filters))
+  })
+
+  app.post('/api/threads', async (context) => {
+    const input = await readJsonBody(context, threadInputSchema)
+    assertThreadInvariant(input)
+    return context.json(threads.create(input, nowIso()), 201)
+  })
+
+  app.get('/api/threads/:threadId', (context) => {
+    const thread = threads.get(context.req.param('threadId'))
+    if (!thread) throw new RecordNotFoundError('No such thread.')
+    return context.json(thread)
+  })
+
+  app.put('/api/threads/:threadId', async (context) => {
+    const input = await readJsonBody(context, threadInputSchema)
+    assertThreadInvariant(input)
+    return context.json(threads.replace(context.req.param('threadId'), input, nowIso()))
+  })
+
+  app.delete('/api/threads/:threadId', (context) => {
+    threads.delete(context.req.param('threadId'))
+    return context.json({ ok: true })
+  })
+
+  // Tool
+
+  app.get('/api/tools', (context) => {
+    const filters: ToolFilters = {}
+    const category = context.req.query('category')
+    if (category) {
+      if (!TOOL_CATEGORIES.includes(category as ToolCategory)) throw new RecordValidationError('Unknown tool category.')
+      filters.category = category as ToolCategory
+    }
+    const location = context.req.query('location')
+    if (location) filters.location = location
+    const needsAttention = booleanQuery(context.req.query('needsAttention'), 'needsAttention')
+    if (needsAttention !== undefined) filters.needsAttention = needsAttention
+    return context.json(tools.list(filters))
+  })
+
+  app.post('/api/tools', async (context) => {
+    const input = await readJsonBody(context, toolInputSchema)
+    return context.json(tools.create(input, nowIso()), 201)
+  })
+
+  app.get('/api/tools/:toolId', (context) => {
+    const tool = tools.get(context.req.param('toolId'))
+    if (!tool) throw new RecordNotFoundError('No such tool.')
+    return context.json(tool)
+  })
+
+  app.put('/api/tools/:toolId', async (context) => {
+    const input = await readJsonBody(context, toolInputSchema)
+    return context.json(tools.replace(context.req.param('toolId'), input, nowIso()))
+  })
+
+  app.delete('/api/tools/:toolId', (context) => {
+    tools.delete(context.req.param('toolId'))
+    return context.json({ ok: true })
+  })
+
   // Search
 
   app.get('/api/search', (context) => {
@@ -286,5 +371,5 @@ export function createApplication(dependencies: ApplicationDependencies) {
     return context.json({ error: 'server_error', message: 'Something went wrong on the server.' }, 500)
   })
 
-  return { app, fabrics, patterns, notions }
+  return { app, fabrics, patterns, notions, threads, tools }
 }

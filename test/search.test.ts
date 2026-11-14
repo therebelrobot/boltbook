@@ -4,7 +4,7 @@ import { freshApp, json, readJson } from './helpers'
 import { buildMatchQuery } from '../server/repositories/search'
 
 interface Hit {
-  type: 'fabric' | 'pattern'
+  type: 'fabric' | 'pattern' | 'thread' | 'tool'
   id: string
   title: string
 }
@@ -46,6 +46,20 @@ test('search finds a pattern by its brand', async () => {
   await app.request('/api/patterns', json({ name: 'Ginger Jeans', brand: 'Closet Core' }))
   const hits = await readJson<Hit[]>(await app.request('/api/search?q=closet'))
   assert.deepEqual(hits.map((h) => h.title), ['Ginger Jeans'])
+})
+
+test('search finds thread by colour and tools by name', async () => {
+  const app = freshApp()
+  await app.request('/api/threads', json({ name: 'Mara 120', colour: 'ecru', brand: 'Gütermann' }))
+  await app.request('/api/tools', json({ name: 'Rotary cutter', category: 'cutting', brand: 'Olfa' }))
+
+  const threadHits = await readJson<Hit[]>(await app.request('/api/search?q=ecru'))
+  assert.equal(threadHits.length, 1)
+  assert.equal(threadHits[0]!.type, 'thread')
+  assert.match(threadHits[0]!.title, /ecru/)
+
+  const toolHits = await readJson<Hit[]>(await app.request('/api/search?q=rotary'))
+  assert.deepEqual(toolHits.map((h) => h.type), ['tool'])
 })
 
 test('a search query full of punctuation does not throw', async () => {

@@ -5,7 +5,8 @@
 
 export type PatternFormat = 'envelope' | 'pdf' | 'book' | 'other'
 export type RequirementRole = 'main' | 'lining' | 'interfacing' | 'other'
-export type NotionKind = 'thread' | 'button' | 'zipper' | 'interfacing' | 'elastic' | 'trim' | 'other'
+export type NotionKind = 'button' | 'zipper' | 'interfacing' | 'elastic' | 'trim' | 'other'
+export type ToolCategory = 'cutting' | 'measuring' | 'pressing' | 'machine' | 'marking' | 'needles_pins' | 'other'
 
 export interface Fabric {
   id: string
@@ -128,12 +129,68 @@ export interface NotionFilters {
   location?: string
 }
 
+/** Thread is its own thing: brand/line, colour code, fibre, weight, spools, metres left. */
+export interface Thread {
+  id: string
+  name: string
+  brand: string | null
+  colour: string | null
+  colourCode: string | null
+  fibre: string | null
+  weight: string | null
+  spools: number | null
+  lengthM: number | null
+  originalLengthM: number | null
+  needleSize: string | null
+  location: string | null
+  source: string | null
+  costMinor: number | null
+  currency: string | null
+  acquiredOn: string | null
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type ThreadInput = Omit<Thread, 'id' | 'createdAt' | 'updatedAt'>
+
+export interface ThreadFilters {
+  colour?: string
+  fibre?: string
+  location?: string
+}
+
+export interface Tool {
+  id: string
+  name: string
+  category: ToolCategory | null
+  brand: string | null
+  spec: string | null
+  quantity: number | null
+  location: string | null
+  needsAttention: boolean
+  acquiredOn: string | null
+  costMinor: number | null
+  currency: string | null
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type ToolInput = Omit<Tool, 'id' | 'createdAt' | 'updatedAt'>
+
+export interface ToolFilters {
+  category?: ToolCategory
+  location?: string
+  needsAttention?: boolean
+}
+
 export interface SearchHit {
-  type: 'fabric' | 'pattern'
+  type: 'fabric' | 'pattern' | 'thread' | 'tool'
   id: string
   title: string
   snippet: string | null
-  /** Remaining length, fabrics only. */
+  /** Fabric remaining length in millimetres; null for every other hit type. */
   lengthMm: number | null
 }
 
@@ -142,4 +199,6 @@ export interface Status {
   fabricCount: number
   patternCount: number
   notionCount: number
+  threadCount: number
+  toolCount: number
 }

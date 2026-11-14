@@ -5,7 +5,14 @@ import { freshApp, json, readJson } from './helpers'
 test('an empty instance reports zero of everything', async () => {
   const response = await freshApp().request('/api/status')
   assert.equal(response.status, 200)
-  assert.deepEqual(await response.json(), { ok: true, fabricCount: 0, patternCount: 0, notionCount: 0 })
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    fabricCount: 0,
+    patternCount: 0,
+    notionCount: 0,
+    threadCount: 0,
+    toolCount: 0,
+  })
 })
 
 test('create, list and fetch a fabric', async () => {

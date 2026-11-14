@@ -102,7 +102,16 @@ pattern_requirement(id PK, pattern_view_id FK→pattern_view ON DELETE CASCADE,
 
 notion(id PK, name, kind, colour, spec, quantity REAL, unit, location,
        notes, created_at, updated_at)
-       -- kind: thread | button | zipper | interfacing | elastic | trim | other
+       -- kind: button | zipper | interfacing | elastic | trim | other
+
+thread(id PK, name, brand, colour, colour_code, fibre, weight, spools,
+       length_m, original_length_m, needle_size, location, source,
+       cost_minor, currency, acquired_on, notes, created_at, updated_at)
+
+tool(id PK, name, category, brand, spec, quantity, location,
+     needs_attention INTEGER, acquired_on, cost_minor, currency, notes,
+     created_at, updated_at)
+     -- category: cutting | measuring | pressing | machine | marking | needles_pins | other
 
 project(id PK, title, pattern_view_id FK→pattern_view NULL, status,
         started_on, finished_on, notes, created_at, updated_at)
@@ -206,6 +215,8 @@ triggers:
 - `fabric_fts(name, fibre, colour, print_type, location, notes)` — built at M1; a `tags` column
   joins when `tag_link` does (a later migration).
 - `pattern_fts(brand, number, name, category, notes)` — built at M2.
+- `thread_fts(brand, name, colour, colour_code, fibre, notes)` — built at M2b.
+- `tool_fts(name, brand, category, spec, notes)` — built at M2b.
 
 `GET /api/search?q=` runs a ranked `BM25` `MATCH` and returns hits with the entity type, a
 title, the best snippet, and — for fabric — remaining `length_mm`. Free text is tokenised and
@@ -286,6 +297,7 @@ land at M5.
 | M0 | Scaffold | repo, brief, ADR, design brief, this doc — **done** |
 | M1 | Store | migrations, repositories, fabrics CRUD API, FTS5 verdict, dep EOL/CVE check — **done** |
 | M2 | Patterns + notions | patterns with views and requirements; notions inventory; CRUD APIs — **done** |
+| M2b | Thread + tools | thread and tool tables and APIs, by request — **done** |
 | M3 | Projects | projects, allocation, `shortfall.ts` with unit tests |
 | M4 | Auth | setup/login/logout/passphrase/TOTP, sessions, rate limit, guards |
 | M5 | Client | Stash, Patterns, Notions, Projects, Search, Settings, Access screens |

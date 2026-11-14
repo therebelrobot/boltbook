@@ -10,6 +10,10 @@ const nullable = <T extends z.ZodType>(schema: T) =>
 
 const optionalText = (max: number) => nullable(z.string().trim().max(max))
 const optionalMillimetres = nullable(z.number().int().min(0).max(1_000_000))
+const optionalMetres = nullable(z.number().int().min(0).max(1_000_000))
+const optionalCost = nullable(z.number().int().min(0).max(1_000_000_000))
+const optionalCurrency = nullable(z.string().trim().length(3))
+const optionalDate = nullable(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'))
 
 export const fabricInputSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -21,9 +25,9 @@ export const fabricInputSchema = z.object({
   colour: optionalText(120),
   printType: optionalText(120),
   source: optionalText(200),
-  costMinor: nullable(z.number().int().min(0).max(1_000_000_000)),
-  currency: nullable(z.string().trim().length(3)),
-  acquiredOn: nullable(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')),
+  costMinor: optionalCost,
+  currency: optionalCurrency,
+  acquiredOn: optionalDate,
   location: optionalText(200),
   care: optionalText(500),
   notes: nullable(z.string().max(5000)),
@@ -59,11 +63,44 @@ export const patternRequirementInputSchema = z.object({
 
 export const notionInputSchema = z.object({
   name: z.string().trim().min(1).max(200),
-  kind: nullable(z.enum(['thread', 'button', 'zipper', 'interfacing', 'elastic', 'trim', 'other'])),
+  kind: nullable(z.enum(['button', 'zipper', 'interfacing', 'elastic', 'trim', 'other'])),
   colour: optionalText(120),
   spec: optionalText(120),
   quantity: nullable(z.number().min(0).max(1_000_000)),
   unit: optionalText(40),
   location: optionalText(200),
+  notes: nullable(z.string().max(5000)),
+})
+
+export const threadInputSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  brand: optionalText(120),
+  colour: optionalText(120),
+  colourCode: optionalText(60),
+  fibre: optionalText(60),
+  weight: optionalText(60),
+  spools: nullable(z.number().int().min(0).max(10_000)),
+  lengthM: optionalMetres,
+  originalLengthM: optionalMetres,
+  needleSize: optionalText(60),
+  location: optionalText(200),
+  source: optionalText(200),
+  costMinor: optionalCost,
+  currency: optionalCurrency,
+  acquiredOn: optionalDate,
+  notes: nullable(z.string().max(5000)),
+})
+
+export const toolInputSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  category: nullable(z.enum(['cutting', 'measuring', 'pressing', 'machine', 'marking', 'needles_pins', 'other'])),
+  brand: optionalText(120),
+  spec: optionalText(200),
+  quantity: nullable(z.number().int().min(0).max(10_000)),
+  location: optionalText(200),
+  needsAttention: z.boolean().default(false),
+  acquiredOn: optionalDate,
+  costMinor: optionalCost,
+  currency: optionalCurrency,
   notes: nullable(z.string().max(5000)),
 })

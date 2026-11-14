@@ -91,15 +91,20 @@ Fabric and patterns are both first-class from day one, linked.
   count; it is not a file host.
 - Marked *tried and true*: a pattern known to fit.
 
-### In, v1 — notions
+### In, v1 — notions, thread and tools
 
-- A simple notion inventory: thread, buttons, zippers, interfacing, elastic, trims —
-  quantity and location.
+- **Notions**: buttons, zippers, interfacing, elastic and trims — quantity, colour, spec and
+  location.
+- **Thread** as its own record, because a notion row cannot hold it: brand and line, colour with
+  its code, fibre, weight, spools on hand, and metres remaining — like fabric, it is consumed.
+- **Tools**: cutting, measuring, pressing, machine, marking, needles and pins — brand, spec,
+  quantity, location, and a **needs-attention** flag for what must be sharpened, serviced or
+  replaced.
 
 ### In, v1 — the linkage
 
-- Allocate fabric (and notions) to a pattern view → a **project**: planned, cutting, sewing,
-  done.
+- Allocate fabric, thread and notions to a pattern view → a **project**: planned, cutting,
+  sewing, done.
 - A view lists the yardage it needs; the allocation names what is short before the project
   starts.
 

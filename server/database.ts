@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite'
  * says how many have run. Plaintext throughout — see docs/adr/0001.
  *
  * 1 — fabric (+ FTS5).  2 — pattern, views, requirements, notion (+ FTS5).
+ * 3 — thread, tool (+ FTS5).
  * Projects, tags, the account and the audit log are later migrations; see
  * docs/technical-design.md §3.
  */
@@ -126,6 +127,84 @@ const MIGRATIONS: string[] = [
      VALUES ('delete', old.rowid, old.brand, old.number, old.name, old.category, old.notes);
      INSERT INTO pattern_fts(rowid, brand, number, name, category, notes)
      VALUES (new.rowid, new.brand, new.number, new.name, new.category, new.notes);
+   END;`,
+
+  `CREATE TABLE thread (
+     id                TEXT PRIMARY KEY,
+     name              TEXT NOT NULL,
+     brand             TEXT,
+     colour            TEXT,
+     colour_code       TEXT,
+     fibre             TEXT,
+     weight            TEXT,
+     spools            INTEGER,
+     length_m          INTEGER,
+     original_length_m INTEGER,
+     needle_size       TEXT,
+     location          TEXT,
+     source            TEXT,
+     cost_minor        INTEGER,
+     currency          TEXT,
+     acquired_on       TEXT,
+     notes             TEXT,
+     created_at        TEXT NOT NULL,
+     updated_at        TEXT NOT NULL
+   );
+   CREATE INDEX thread_colour_idx ON thread(colour);
+   CREATE INDEX thread_fibre_idx ON thread(fibre);
+   CREATE VIRTUAL TABLE thread_fts USING fts5(
+     brand, name, colour, colour_code, fibre, notes,
+     content='thread', content_rowid='rowid'
+   );
+   CREATE TRIGGER thread_after_insert AFTER INSERT ON thread BEGIN
+     INSERT INTO thread_fts(rowid, brand, name, colour, colour_code, fibre, notes)
+     VALUES (new.rowid, new.brand, new.name, new.colour, new.colour_code, new.fibre, new.notes);
+   END;
+   CREATE TRIGGER thread_after_delete AFTER DELETE ON thread BEGIN
+     INSERT INTO thread_fts(thread_fts, rowid, brand, name, colour, colour_code, fibre, notes)
+     VALUES ('delete', old.rowid, old.brand, old.name, old.colour, old.colour_code, old.fibre, old.notes);
+   END;
+   CREATE TRIGGER thread_after_update AFTER UPDATE ON thread BEGIN
+     INSERT INTO thread_fts(thread_fts, rowid, brand, name, colour, colour_code, fibre, notes)
+     VALUES ('delete', old.rowid, old.brand, old.name, old.colour, old.colour_code, old.fibre, old.notes);
+     INSERT INTO thread_fts(rowid, brand, name, colour, colour_code, fibre, notes)
+     VALUES (new.rowid, new.brand, new.name, new.colour, new.colour_code, new.fibre, new.notes);
+   END;
+
+   CREATE TABLE tool (
+     id              TEXT PRIMARY KEY,
+     name            TEXT NOT NULL,
+     category        TEXT,
+     brand           TEXT,
+     spec            TEXT,
+     quantity        INTEGER,
+     location        TEXT,
+     needs_attention INTEGER NOT NULL DEFAULT 0,
+     acquired_on     TEXT,
+     cost_minor      INTEGER,
+     currency        TEXT,
+     notes           TEXT,
+     created_at      TEXT NOT NULL,
+     updated_at      TEXT NOT NULL
+   );
+   CREATE INDEX tool_category_idx ON tool(category);
+   CREATE VIRTUAL TABLE tool_fts USING fts5(
+     name, brand, category, spec, notes,
+     content='tool', content_rowid='rowid'
+   );
+   CREATE TRIGGER tool_after_insert AFTER INSERT ON tool BEGIN
+     INSERT INTO tool_fts(rowid, name, brand, category, spec, notes)
+     VALUES (new.rowid, new.name, new.brand, new.category, new.spec, new.notes);
+   END;
+   CREATE TRIGGER tool_after_delete AFTER DELETE ON tool BEGIN
+     INSERT INTO tool_fts(tool_fts, rowid, name, brand, category, spec, notes)
+     VALUES ('delete', old.rowid, old.name, old.brand, old.category, old.spec, old.notes);
+   END;
+   CREATE TRIGGER tool_after_update AFTER UPDATE ON tool BEGIN
+     INSERT INTO tool_fts(tool_fts, rowid, name, brand, category, spec, notes)
+     VALUES ('delete', old.rowid, old.name, old.brand, old.category, old.spec, old.notes);
+     INSERT INTO tool_fts(rowid, name, brand, category, spec, notes)
+     VALUES (new.rowid, new.name, new.brand, new.category, new.spec, new.notes);
    END;`,
 ]
 
