@@ -53,7 +53,7 @@ The proxy terminates TLS and forwards to `127.0.0.1:8080`. Two things matter:
   a cross-site form from writing to your stash.
 - `BOLTBOOK_TRUST_PROXY=true`, so rate limiting sees the real client IP rather than the proxy's.
 
-An access layer in front (an SSO gateway, Cloudflare Access, a client certificate) is worth
+An access layer in front (an SSO gateway, an edge access layer, a client certificate) is worth
 having even though boltbook has its own single-user sign-in: it keeps the login form itself off
 the public internet. Two caveats when you add one:
 
