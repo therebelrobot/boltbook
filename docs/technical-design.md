@@ -25,7 +25,9 @@ data key and no locked/unlocked split in the read path (see ADR 0001).
 ### Mobile-first
 
 The primary device is the phone held at the shelf, mid-project; the desktop is the second
-target. That is a constraint on the client, not a later polish pass:
+target. That is a constraint on the client, not a later polish pass — the full set (layout,
+the mobile-native baseline, motion, gestures, components) is in `docs/design-brief.md`, and
+in outline:
 
 - **Bottom navigation** across the top-level places (Stash, Patterns, Projects, Search), with
   Settings reachable from the header — one-handed reach, nothing critical in the top corners.

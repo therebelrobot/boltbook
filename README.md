@@ -28,8 +28,9 @@ machine, without the account or the cloud.
 ## Status
 
 **Designed, not built.** The product brief (`docs/product-brief.md`), the technical design
-(`docs/technical-design.md`) and ADR 0001 (no encryption at rest) are written. No code yet —
-M1, the store, is next per the design's delivery plan. The client is mobile-first.
+(`docs/technical-design.md`), the design brief (`docs/design-brief.md`) and ADR 0001 (no
+encryption at rest) are written. No code yet — M1, the store, is next per the design's
+delivery plan. The client is mobile-first.
 
 ## License
 

@@ -12,10 +12,11 @@ pattern piece or drafting a garment, it belongs in the other project.
 |---|---|
 | `docs/product-brief.md` | Why this exists, the scope, what v1 is and is not |
 | `docs/technical-design.md` | Modules, the data model, the seams, delivery plan |
+| `docs/design-brief.md` | How the client looks, moves and feels — the mobile-first rules |
 | `docs/adr/` | Decisions that are hard to reverse |
 
-`docs/product-brief.md` and `docs/technical-design.md` are written, and `docs/adr/` holds the
-decisions. The brief leads; when the design and the brief disagree, the brief wins and the
+The brief, the technical design and the design brief are written, and `docs/adr/` holds the
+decisions. The brief leads; when a design doc and the brief disagree, the brief wins and the
 design is corrected.
 
 ## Conventions
