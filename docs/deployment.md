@@ -17,16 +17,17 @@ own in a local override that is not committed.
 ```sh
 git clone https://github.com/therebelrobot/boltbook.git
 cd boltbook
-cp compose.yaml compose.override.yaml     # your hostnames and port go here
-echo 'BOLTBOOK_SETUP_TOKEN=pick-something' >> .env
+cp compose.yaml compose.override.yaml     # your hostnames, port and setup token go here
 docker compose up -d
 docker compose logs boltbook              # prints the setup token on first start
 ```
 
-Open the URL, claim the instance with the setup token and a passphrase (12+ characters), then
-**remove `BOLTBOOK_SETUP_TOKEN`** and `docker compose up -d` again. The token is only honoured
-while no account exists; leaving it set is harmless but pointless, and removing it keeps a secret
-out of your environment.
+Put `BOLTBOOK_SETUP_TOKEN: 'pick-something'` under `environment` in the override. Open the URL,
+claim the instance with that token and a passphrase (12+ characters), then **remove the token from
+the override** and `docker compose up -d` again. The token is only honoured while no account
+exists; leaving it set is harmless but pointless, and removing it keeps a secret out of your
+environment. (A bare `.env` is not injected into the container; Compose only uses it for variables
+the compose file references.)
 
 ## Environment
 
@@ -72,8 +73,10 @@ is no key to keep alongside it.
 # From a checkout:
 npm run backup -- ./backups
 
-# From the container's volume:
-docker compose exec boltbook node -e "process.exit(0)"   # (the image ships no scripts; use the volume)
+# From the container's volume (stop first so the WAL is settled):
+docker compose stop boltbook
+docker compose cp boltbook:/data/boltbook.db ./backups/boltbook-$(date +%F).db
+docker compose start boltbook
 ```
 
 The simplest durable answer is to copy the `${BOLTBOOK_DATA_DIR}` directory on a schedule, with
@@ -81,10 +84,11 @@ the container stopped or right after a `wal_checkpoint`. Keep the copy wherever 
 records themselves, and note that anyone with the file reads the whole stash.
 
 There is also a portable export — **Settings → Export** or `GET /api/export` — which is a zip of
-`boltbook.json` plus the photo files, with credentials excluded. Restoring it
+`boltbook.json` plus the photo and pattern-file entries, with credentials excluded. Restoring it
 (**Settings → Restore**, or `POST /api/import?mode=replace`) **replaces every record** on the
-instance; it does not merge, and it never touches the account or this instance's own audit log. If
-you want to be careful, take an export of the current state first — it is one click.
+instance — tags, views, photos and pattern PDFs included; it does not merge, and it never touches
+the account or this instance's own audit log. If you want to be careful, take an export of the
+current state first — it is one click.
 
 ## Upgrading
 
@@ -105,5 +109,5 @@ BOLTBOOK_SETUP_TOKEN=pick-something npm start
 ```
 
 Node 26 LTS or newer (`.nvmrc` pins the exact patch). This is how the client is developed:
-`npm run dev:server` and `npm run dev:client` in two terminals, with the Vite dev server
-proxying `/api` to the running server.
+`npm run dev` (server) and `npm run dev:client` (Vite client) in two terminals, with the Vite dev
+server proxying `/api` to the running server.

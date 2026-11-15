@@ -44,8 +44,8 @@ fabric on the shelf and the patterns in the box, and answers the question a proj
 ## What it does
 
 - **Fabric** — fibre, weight, colour, print, yardage (remaining and bought), width, source, care,
-  location, photos. A bolt splits as you use it, and the yardage comes off it when a project is
-  finished.
+  location, photos. The remaining yardage comes off the bolt when a project is finished, so what
+  is left is always the current length.
 - **Patterns** — brand, number, format, size range, difficulty, category, plus **views**, each
   with its own yardage requirements and notions — all editable in the client.
 - **Pattern PDFs** — the pattern owns its PDF (25 MB cap) with a page count and a first-page
@@ -64,7 +64,8 @@ fabric on the shelf and the patterns in the box, and answers the question a proj
 - **Projects** — allocate fabric, thread and notions to a pattern view, and the **shortfall**
   readout names what is short (remaining minus what other live projects reserve) and what is too
   narrow, before you cut.
-- **Search** across everything, ranked.
+- **Search** across fabric, patterns, thread and tools, ranked — with a second pass over the tags.
+  Notions and projects are not in the search index.
 
 ## Units
 
@@ -135,7 +136,8 @@ Configuration is environment-only; every variable is in
 [`docs/deployment.md`](docs/deployment.md), along with the reverse-proxy shape, backups and
 upgrades. The short version: `BOLTBOOK_DATA_DIR`, `BOLTBOOK_DB`, `BOLTBOOK_PORT`, `BOLTBOOK_HOST`,
 `BOLTBOOK_COOKIE_SECURE`, `BOLTBOOK_TRUST_PROXY`, `BOLTBOOK_PUBLIC_ORIGIN`,
-`BOLTBOOK_SESSION_IDLE_MINUTES`, `BOLTBOOK_SESSION_MAX_HOURS`, `BOLTBOOK_SETUP_TOKEN`.
+`BOLTBOOK_SESSION_IDLE_MINUTES`, `BOLTBOOK_SESSION_MAX_HOURS`, `BOLTBOOK_SETUP_TOKEN`,
+`BOLTBOOK_SCRYPT_N`.
 
 **Lost the passphrase?** There is no recovery code — nothing is encrypted, so there is no key to
 recover. `npm run reset-passphrase -- --yes` clears the account (your records are untouched),
@@ -171,14 +173,16 @@ envelope OCR.** The backend, the client, and shipping are all real:
   decodes back to its location URL, and an envelope scan prefilled and saved with its view letters.
 - **Ship** — a multi-stage Docker image with no `node_modules` in the runtime layer, `compose.yaml`,
   CI that typechecks/builds/tests and builds both architectures, and a GHCR publish workflow with
-  provenance and an SBOM. The image was built and run: it serves the client, claims, persists to a
-  volume, reports healthy, and survives a restart. The build stage now copies `scripts/`, runs the
-  pdf.js and Tesseract asset copy, and asserts the worker/WASM/model files are in `dist/`.
+  provenance and an SBOM. The image was built and run: it serves the client and the static assets
+  and reports healthy; the v1 ship run verified claim, volume persistence and restart. The build
+  stage now copies `scripts/`, runs the pdf.js and Tesseract asset copy, and asserts the
+  worker/WASM/model files are in `dist/`.
 
 174 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
 
-**Not yet:** the rest of v2 — shopping list, tag hygiene, project photos, costing, and imports
-(Threadloop/Stash Hub and merge). See [`docs/v2-plan.md`](docs/v2-plan.md).
+**Not yet:** the rest of v2 — shopping list, tag hygiene, project photos, costing, imports
+(Threadloop/Stash Hub and merge), and the remote-access recipe. See
+[`docs/v2-plan.md`](docs/v2-plan.md).
 
 ## Docs
 
