@@ -26,6 +26,19 @@
   --chrome-line: rgba(0, 0, 0, 0.06);
   --radius: 12px;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.06);
+
+  /*
+   * The phone browser's own bottom toolbar — never the app's tab bar, which
+   * the shell already holds above it.
+   *
+   * `position: fixed; inset: 0` is resolved against the *layout* viewport, and
+   * on iOS Safari that extends behind the bottom toolbar: the reason `100dvh`
+   * exists, and the one place the sheet still gets it wrong. The gap between
+   * the large and the dynamic viewport is exactly the strip a toolbar covers,
+   * so padding by it puts the last control back above the toolbar, and costs
+   * nothing on a browser that has no bottom chrome.
+   */
+  --toolbar-inset: calc(100lvh - 100dvh);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -122,7 +135,7 @@ body {
 .main {
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0.75rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  padding: 0.75rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px) + var(--toolbar-inset));
   -webkit-overflow-scrolling: touch;
 }
 
@@ -458,7 +471,12 @@ a.button {
 .sheet .content {
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  /*
+   * Room under the last control — the Add/Save button — for the browser's own
+   * bottom toolbar, which the sheet's fixed backdrop sits behind. Without it
+   * the button is the first thing the toolbar covers.
+   */
+  padding: 0 1rem calc(1rem + env(safe-area-inset-bottom, 0px) + var(--toolbar-inset));
 }
 .sheet .actions {
   display: flex;
