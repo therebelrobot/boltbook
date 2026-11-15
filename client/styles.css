@@ -596,6 +596,14 @@ a.button {
 }
 .photo-grid img {
   width: 100%;
+  /*
+   * `height: auto` is load-bearing. The img carries width/height attributes
+   * from the stored pixel size, and those are presentational hints the browser
+   * turns into a used height — a 600×1800 photo then renders 114×1800, a tall
+   * skinny strip, because a definite height leaves `aspect-ratio` nothing to
+   * do. Author CSS beats the hint, and the grid keeps the thumbnail square.
+   */
+  height: auto;
   aspect-ratio: 1;
   object-fit: cover;
   border-radius: 10px;
