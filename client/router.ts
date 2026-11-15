@@ -9,10 +9,19 @@ const TABS = ['stash', 'patterns', 'projects', 'search'] as const
 export type TabName = (typeof TABS)[number]
 export const tabNames = TABS
 
+function decodeSegment(segment: string | undefined): string | null {
+  if (segment === undefined || segment === '') return null
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return segment
+  }
+}
+
 export function parseRoute(hash: string): Route {
   const cleaned = hash.replace(/^#\/?/, '')
   const [name = 'stash', id] = cleaned.split('/')
-  return { name: name || 'stash', id: id ?? null }
+  return { name: name || 'stash', id: decodeSegment(id) }
 }
 
 export function useRoute(): Route {
@@ -26,5 +35,5 @@ export function useRoute(): Route {
 }
 
 export function navigate(name: string, id?: string): void {
-  window.location.hash = `#/${name}${id ? `/${id}` : ''}`
+  window.location.hash = `#/${name}${id ? `/${encodeURIComponent(id)}` : ''}`
 }

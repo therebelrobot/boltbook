@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite'
  * 1 — fabric (+ FTS5).  2 — pattern, views, requirements, notion (+ FTS5).
  * 3 — thread, tool (+ FTS5).  4 — project and its allocations.
  * 5 — account and audit_log.  6 — fabric photos.  7 — tags.
+ * 8 — pattern files (the owned PDF and its thumbnail).
  */
 const MIGRATIONS: string[] = [
   `CREATE TABLE fabric (
@@ -287,6 +288,24 @@ const MIGRATIONS: string[] = [
      PRIMARY KEY (tag_id, entity_type, entity_id)
    );
    CREATE INDEX tag_link_entity_idx ON tag_link(entity_type, entity_id);`,
+
+   // One owned PDF per pattern. The bytes are a row for the same reason photos
+   // are: one database file is the whole record, and a backup is one copy.
+   // The thumbnail is rendered client-side (docs/technical-design.md §7).
+   `CREATE TABLE pattern_file (
+      id                     TEXT PRIMARY KEY,
+      pattern_id             TEXT NOT NULL UNIQUE REFERENCES pattern(id) ON DELETE CASCADE,
+      filename               TEXT NOT NULL,
+      content_type           TEXT NOT NULL,
+      page_count             INTEGER,
+      pdf_bytes              BLOB NOT NULL,
+      thumbnail_content_type TEXT,
+      thumbnail_bytes        BLOB,
+      thumbnail_width_px     INTEGER,
+      thumbnail_height_px    INTEGER,
+      created_at             TEXT NOT NULL,
+      updated_at             TEXT NOT NULL
+    );`,
 ]
 
 export type Database = DatabaseSync

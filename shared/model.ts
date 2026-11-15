@@ -87,6 +87,26 @@ export interface PatternViewInput {
   description: string | null
 }
 
+/** The first page of an owned pattern PDF, rendered by the client on upload. */
+export interface PatternFileThumbnail {
+  contentType: string
+  widthPx: number | null
+  heightPx: number | null
+}
+
+/** The PDF a pattern owns. Metadata only; the bytes are served by id. */
+export interface PatternFile {
+  id: string
+  patternId: string
+  filename: string
+  contentType: string
+  pageCount: number | null
+  byteSize: number
+  thumbnail: PatternFileThumbnail | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Pattern {
   id: string
   name: string
@@ -103,6 +123,7 @@ export interface Pattern {
   linkUrl: string | null
   notes: string | null
   views: PatternView[]
+  file: PatternFile | null
   tags: string[]
   createdAt: string
   updatedAt: string
@@ -132,6 +153,16 @@ export interface PatternFilters {
   format?: PatternFormat
   triedAndTrue?: boolean
   tag?: string
+}
+
+/** A storage location, derived from the free-text `location` on every record. */
+export interface LocationSummary {
+  name: string
+  fabricCount: number
+  threadCount: number
+  toolCount: number
+  notionCount: number
+  total: number
 }
 
 export interface Notion {

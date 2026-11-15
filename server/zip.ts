@@ -100,6 +100,7 @@ export function createZip(entries: readonly ZipEntry[], at: Date = new Date()): 
 }
 
 export function extensionForContentType(contentType: string): string {
+  if (contentType === 'application/pdf') return 'pdf'
   if (contentType === 'image/png') return 'png'
   if (contentType === 'image/webp') return 'webp'
   return 'jpg'

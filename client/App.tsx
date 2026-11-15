@@ -3,6 +3,8 @@ import { getStatus } from './api'
 import { AppShell } from './components/AppShell'
 import { ToastProvider } from './components/Toast'
 import { AccessScreen } from './screens/AccessScreen'
+import { LabelsScreen } from './screens/LabelsScreen'
+import { LocationScreen } from './screens/LocationScreen'
 import { PatternsScreen } from './screens/PatternsScreen'
 import { ProjectsScreen } from './screens/ProjectsScreen'
 import { SearchScreen } from './screens/SearchScreen'
@@ -23,6 +25,7 @@ export function App() {
   const [status, setStatus] = useState<AuthStatus | null>(null)
   const [unreachable, setUnreachable] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [labelsOpen, setLabelsOpen] = useState(false)
   const route = useRoute()
 
   const refresh = useCallback(async () => {
@@ -39,6 +42,10 @@ export function App() {
   }, [refresh])
 
   const activeTab: TabName = (tabNames as readonly string[]).includes(route.name) ? (route.name as TabName) : 'stash'
+  const locationName = route.name === 'location' ? route.id : null
+  const heading = locationName
+    ? { title: 'Location', subtitle: locationName }
+    : TITLES[activeTab]
 
   if (unreachable) {
     return (
@@ -54,26 +61,36 @@ export function App() {
     <UnitProvider>
       <ToastProvider>
         <AppShell
-          title={TITLES[activeTab].title}
-          subtitle={TITLES[activeTab].subtitle}
+          title={heading.title}
+          subtitle={heading.subtitle}
           activeTab={activeTab}
           onOpenSettings={() => setSettingsOpen(true)}
         >
-          {activeTab === 'stash' && <StashScreen />}
-          {activeTab === 'patterns' && <PatternsScreen />}
-          {activeTab === 'projects' && <ProjectsScreen />}
-          {activeTab === 'search' && <SearchScreen onOpenTab={(tab) => navigate(tab)} />}
+          {locationName ? (
+            <LocationScreen key={locationName} name={locationName} />
+          ) : (
+            <>
+              {activeTab === 'stash' && <StashScreen />}
+              {activeTab === 'patterns' && <PatternsScreen />}
+              {activeTab === 'projects' && <ProjectsScreen />}
+              {activeTab === 'search' && <SearchScreen onOpenTab={(tab) => navigate(tab)} />}
+            </>
+          )}
         </AppShell>
 
         {settingsOpen && (
           <SettingsScreen
             onClose={() => setSettingsOpen(false)}
+            onOpenLabels={() => setLabelsOpen(true)}
             onSignedOut={() => {
               setSettingsOpen(false)
+              setLabelsOpen(false)
               void refresh()
             }}
           />
         )}
+
+        {labelsOpen && <LabelsScreen onClose={() => setLabelsOpen(false)} />}
       </ToastProvider>
     </UnitProvider>
   )

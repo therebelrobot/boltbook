@@ -1,8 +1,9 @@
 # boltbook — Technical Design
 
-**Document version:** 1.0 · **Last updated:** 2026-11-14
+**Document version:** 1.1 · **Last updated:** 2026-11-14
 **Companion:** `product-brief.md`, `adr/0001-no-encryption-at-rest.md`
-**Status:** proposed — nothing below is built yet.
+**Status:** v1 built; v2 in progress — pattern PDFs, storage labels and tiled printing are
+built (v2-plan §5–§7).
 
 ---
 
@@ -57,7 +58,8 @@ server/
   repositories/
     fabrics.ts  patterns.ts  notions.ts  projects.ts  tags.ts  audit.ts
   shortfall.ts     the allocation maths (pure, no I/O)
-  export.ts        build the zip (json + photos)
+  locations.ts     distinct storage locations + counts, for the label sheet
+  export.ts        build the zip (json + photos + pattern files)
   staticAssets.ts  read dist/client into an allow-list at startup
 client/
   main.tsx  App.tsx  router.ts  api.ts  styles.css  useCollection.ts
@@ -65,8 +67,13 @@ client/
   format.ts        display helpers (pure, unit-tested)
   units.ts         metric ↔ imperial (pure, unit-tested)
   photo.ts         downscale + EXIF strip, client-side
-  components/      AppShell, Sheet (drag-to-dismiss), EntitySheet, PhotoField, Toast
-  screens/         Access, Stash, Patterns, Projects, Search, Settings
+  pdf.ts           pdf.js: page count, first-page thumbnail, tiled raster
+  tiling.ts        paper and tile geometry (pure, unit-tested)
+  qr.ts            QR matrix and label URLs (pure, unit-tested)
+  components/      AppShell, Sheet, EntitySheet, PhotoField, PatternFileField,
+                   PrintOverlay, QrSvg, Toast
+  screens/         Access, Stash, Patterns, Projects, Search, Settings,
+                   Labels, Location, TiledPrint
 shared/
   model.ts         types shared by server and client (the wire contract)
 test/
@@ -134,6 +141,12 @@ tag(id PK, name UNIQUE)
 tag_link(tag_id FK, entity_type, entity_id, PRIMARY KEY(tag_id, entity_type, entity_id))
          -- entity_type: fabric | pattern | project
 
+pattern_file(id PK, pattern_id FK→pattern UNIQUE ON DELETE CASCADE,
+             filename, content_type, page_count,
+             pdf_bytes BLOB, thumbnail_content_type, thumbnail_bytes BLOB,
+             thumbnail_width_px, thumbnail_height_px, created_at, updated_at)
+             -- one owned PDF per pattern; byte size is LENGTH(pdf_bytes)
+
 account(singleton_id INTEGER PK CHECK(=1), created_at, scrypt_n, scrypt_r, scrypt_p,
         passphrase_salt BLOB, passphrase_hash BLOB,
         totp_secret TEXT NULL, totp_last_accepted_counter INTEGER)
@@ -200,6 +213,11 @@ GET/POST        /api/patterns
 GET/PUT/DELETE  /api/patterns/:id
 POST/PUT/DELETE /api/patterns/:id/views[/:viewId]
 POST/PUT/DELETE /api/patterns/:id/views/:viewId/requirements[/:reqId]
+POST   /api/patterns/:id/file               raw PDF, ?filename=&pageCount=
+POST   /api/patterns/:id/file/:fileId/thumbnail
+GET    /api/patterns/:id/file/:fileId       inline PDF, private immutable cache
+GET    /api/patterns/:id/file/:fileId/thumbnail
+DELETE /api/patterns/:id/file
 
 GET/POST        /api/notions
 GET/PUT/DELETE  /api/notions/:id
@@ -209,6 +227,7 @@ GET/PUT/DELETE  /api/projects/:id
 PUT             /api/projects/:id/allocations   { fabrics[], notions[] }
 
 GET/POST        /api/tags
+GET    /api/locations                 distinct locations + record counts
 GET    /api/search?q=
 GET    /api/export                    application/zip
 GET    /api/audit
@@ -281,8 +300,38 @@ Photos are **rows**, not files, so the whole record is one file to copy. **Built
   gets a new id and never serves stale bytes.
 - **Downscale and EXIF/GPS stripping are the client's job**, not the server's; the server accepts
   what it is given and only enforces type and size. The client half arrives with M5.
-- Attached **pattern PDFs are links, not uploads** (v1): the row stores a URL or a path on the
-  box. Owning pattern binaries is a v2 question.
+
+### Owned pattern PDFs and print (v2, built 2026-11-14)
+
+A pattern can now **own** its PDF instead of linking to one. It is one row
+(`pattern_file`), for the same reason photos are rows: the record is one database file to back up.
+The cap is **25 MB** — a full A0 pattern with instructions — and the accepted type is
+`application/pdf` only. Replacing a file deletes the old row and inserts a new one, so the file id
+changes and the `immutable` cache key can never serve stale bytes.
+
+**The server does not parse or render PDFs.** Page count and the first-page thumbnail are read in
+the browser with `pdfjs-dist`, then sent as metadata (`?pageCount=`) and a 2 MB JPEG/PNG
+thumbnail. That keeps the dependency register free of a server-side PDF engine, and no pattern
+ever leaves the box. The same lazy-loaded pdf.js module drives **tiled printing**: the PDF page is
+rasterised at the chosen DPI in sheet-sized tiles, with overlap, registration marks, page labels
+and a 50 mm scale-check square. The browser's print dialog does not tile; the stylesheet only has
+to place one image per page.
+
+- `GET /api/patterns/:id/file/:fileId` is `Content-Disposition: inline`, `private`,
+  `immutable`, so the native viewer opens it in a tab (iOS included).
+- The thumbnail is an optional second request; a PDF that cannot be previewed is still stored.
+- The label sheet reads `GET /api/locations` (distinct free-text locations with counts) and
+  renders one QR per location at error-correction **H**, with a small centre mark (≈3% of the
+  area, well inside H's 30% recovery). The QR carries an absolute `#/location/<name>` URL, so a
+  scanned label works from another device on the same instance.
+- Labels are **2 × 5 at 88 × 46 mm** on A4 or Letter, 8 mm page padding; both papers fit the
+  same grid. The print overlay is rendered into `<body>` (a portal), so the print stylesheet can
+  hide the app without hiding the sheet being printed. `@page` size is swapped as a same-origin
+  stylesheet (`/print-a4.css` / `/print-letter.css`), because `@page` cannot be selected by a
+  class.
+- Pattern files are part of the one-zip export as `pattern-files/<id>.pdf` and
+  `pattern-files/thumbs/<id>.<ext>`; restore matches the metadata rows to those entries the same
+  way it matches photos.
 
 ## 8. Allocation and shortfall
 
@@ -351,10 +400,21 @@ the set already proven in `resonate`/`reframe`; exact pins, no floating majors.
 | `tsx` | 4.23.15 | MIT | Dev watch, test loader |
 | `typescript` | 7.0.2 | Apache-2.0 | Typecheck |
 | `@types/node` | ^26 | MIT | Node 26 types |
+| `pdfjs-dist` | 6.5.438 | Apache-2.0 | Page count, first-page thumbnail and tiled raster (client, lazy) |
+| `qrcode-generator` | 2.0.4 | MIT | QR matrices for storage labels |
 
 `node:sqlite` is built into Node 26 — no dependency, no native build. Per the standing
 directive, the **EOL and CVE check runs at M1** across this list before any of it is installed;
 Node itself is 26 LTS (verified 2026-11-14). All licences above are compatible with Unlicense.
+
+**v2 additions (2026-11-14).** `qrcode-generator` is zero-dependency and ships its own types.
+`pdfjs-dist` is 37 MB unpacked because it carries the CMaps, standard fonts and wasm used by
+unusual PDFs; the client imports it **dynamically** (pattern path only), and the Vite build splits
+a ~444 KB chunk plus a 1.27 MB worker. The assets are copied to `client/public/pdfjs/` by
+`scripts/copy-pdfjs-assets.mjs` on `predev:client`/`prebuild:client` and served same-origin. The
+optional `@napi-rs/canvas` is only for pdf.js's Node legacy build, which the app does not use.
+`npm audit` is clean, and both licences clear the Unlicense gate. The browser build is checked
+against `script-src 'self'`; the worker is same-origin and no `eval` path is used.
 
 **M1 outcome.** Installed and `npm audit`-clean. The starting pins were raised to the current
 releases after the audit: `zod` 4.6.5 carried **GHSA-mrhx-c7xc-m3w5** (high, memory exhaustion
@@ -377,7 +437,8 @@ land at M5.
 | M5b | Tags + views editor | tag store, routes, filters and tag search; the pattern views/requirements editor in the client — **done** |
 | M6 | Export + backup | zip export from the API and Settings, `npm run backup` — **done** |
 | M7 | Ship | Dockerfile (multi-stage), compose, CI + GHCR publish workflows, deployment notes — **done** |
-| v2 | Beyond v1 | Shopping list, tag hygiene, project photos, costing, pattern PDFs, labels, tiled printing, imports, OCR — scoped in `v2-plan.md` |
+| v2a | Pattern files + print | migration 8, owned PDF + thumbnail, `/api/locations`, QR labels, location screen, client-side tiled print — **done** |
+| v2 | Beyond v1 | The rest: shopping list, tag hygiene, project photos, costing, imports, OCR — scoped in `v2-plan.md` |
 
 Auth (M4) could land before M1's later parts; the plan keeps it early enough that nothing ships
 unauthenticated.
@@ -389,14 +450,27 @@ unauthenticated.
   wrong setup token, replay-protected TOTP, session expiry), search query building.
 - **Integration:** each API route with an in-memory database (`:memory:`), asserting status and
   body shape from `shared/model.ts`.
+- **Pattern files:** upload/read/delete, the 25 MB and type caps, a bad page count, the thumbnail
+  by file id, replacement changing the id (and invalidating the old URL), cascade on pattern
+  delete, and export → import with byte-identical PDF and thumbnail bytes.
+- **Locations and geometry:** distinct locations fold case and blank strings; the shortfall and
+  report counts are honest; tiled-print geometry is pure (`planTiles`) and tested at A4, Letter,
+  A3→A4 and A0→A4; the QR matrix, quiet zone and absolute label URL are tested without a DOM.
 - **Lossless record:** create a fabric with a photo, read it back, byte-compare the photo.
 - **Instance:** a fresh `:memory:` app prints one setup token; `POST /api/setup` twice fails the
   second time; an unauthenticated `/api/*` read is refused with no data.
 - **Perf:** a 100+ fabric stash filters under a second (brief §7).
+- **Browser (v2a, 2026-11-14):** an A0 test PDF uploaded through the real client, previewed and
+  printed to **25 A4 pages at 210 × 297 mm**, with the 50 mm check square; a storage-label QR
+  decoded by OpenCV back to `…/#/location/Bin A`; the location screen, labels and tiled sheet
+  checked at 1280 × 720 and 390 × 844. 162 tests, `tsc` clean, `npm audit` clean.
 
 ## 13. Open decisions
 
 - **Photos as rows** (BLOB) versus files on disk — leaning rows for one-file backup; confirmed
   only if typical photos keep the DB reasonable.
-- **Pattern PDFs**: link-only in v1 (as above) or store the file.
+- **Pattern PDFs — resolved 2026-11-14.** The pattern owns the file; it is a row, exported with the
+  record, capped at 25 MB. Page count and thumbnail are client-rendered, so no server PDF parser.
+- **Tiled printing — resolved 2026-11-14.** Client-side pdf.js, 100% physical scale, A4/Letter,
+  10 mm default overlap; no server renderer and no pattern data leaves the box.
 - **Pattern source**: free-text, or a curated list of houses (Simplicity, McCall's, …)?

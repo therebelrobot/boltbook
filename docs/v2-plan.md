@@ -1,7 +1,8 @@
 # boltbook — v2 plan
 
-v1 is complete (§11 of the technical design). This is what comes next, why, and what each item
-would cost — **mapped, not started**. Nothing here is a promise; pick from it.
+v1 is complete (§11 of the technical design). **Items 5–7 are built (2026-11-14)** — owned
+pattern PDFs, bin and box labels, and tiled PDF printing. The rest is **mapped, not started**.
+Nothing here is a promise; pick from it.
 
 Each entry says what it touches, what it needs that does not exist yet, and the decision that
 would have to be made first. Sizes are rough: **S** is an afternoon, **M** a day or two, **L** is
@@ -87,6 +88,14 @@ client upload a thumbnail it rendered itself.
 
 **Decisions.** Whether PDFs are exportable with the rest (yes — they are records); the size cap.
 
+**Built 2026-11-14.** Migration 8 adds `pattern_file`: one PDF per pattern, **25 MB** cap, the
+bytes in the row (one file to back up), with `filename`, `page_count` and an optional client-rendered
+thumbnail. `POST/GET/DELETE /api/patterns/:id/file` serve it by file id, inline, private and
+immutable; replacing it changes the id, so the old URL can never serve stale bytes. Page count and
+the first-page thumbnail are read in the browser with `pdfjs-dist`; a PDF that cannot be previewed
+is still stored. The file and thumbnail travel in the export as `pattern-files/` entries and come
+back byte-for-byte on restore. Tests: 11 in `test/pattern-files.test.ts`, plus export/import.
+
 ---
 
 ## 6. Bin and box labels — M
@@ -103,6 +112,14 @@ spec), a print stylesheet, and a route that hands deep links back into the clien
 **Decisions.** Whether a scanned label deep-links to a *location* (a filter) or a specific record.
 Leaning: both, with locations first.
 
+**Built 2026-11-14.** Locations are derived from the free-text field across fabrics, thread, tools
+and notions (`GET /api/locations`, case-folded counts). A label's QR carries an absolute
+`#/location/<name>` URL and opens the new **location screen**, which lists every kind stored there —
+the question the label exists to answer. QR generation is `qrcode-generator` (MIT, zero deps) at
+error-correction **H** with a small centre mark (~3% of the area); OpenCV decoded the printed label
+back to the exact URL. The sheet is 2 × 5 at 88 × 46 mm, 8 mm padding, and fits A4 and Letter;
+Settings → Print storage labels. Per-record labels are deliberately still optional/later.
+
 ---
 
 ## 7. Tiled PDF printing — M/L
@@ -117,6 +134,14 @@ CVE check required) or client-side canvas tiling into a print stylesheet. **Clie
 dependency register clean** and matches how the photos are already handled.
 
 **Decisions.** Which way round to do it — this is the real decision in the item.
+
+**Built 2026-11-14 — client-side.** `pdfjs-dist` is lazy-loaded only when a pattern PDF is opened.
+Each PDF page is rendered at 100% physical scale and cut into sheet-sized tiles at 200/300/400 dpi;
+the print sheet carries registration marks, a `P1 · 1/5 · 1/5 · 1/25` label, 10 mm default overlap
+and a 50 mm scale-check square on the first sheet. The print overlay is a portal into `<body>`, so
+`@media print` can hide the app; the `@page` size is swapped by a same-origin stylesheet because
+`@page` cannot be selected by a class. Verified: the A0 fixture printed to **25 A4 pages at
+210 × 297 mm** with the 50 mm square. No server renderer, and the PDF never leaves the box.
 
 ---
 
@@ -201,9 +226,10 @@ of it would be a bigger conversation than a feature.
 By value per unit of risk — the cheap, dependency-free items first, and the two that need a real
 decision last:
 
-1. Shopping list (1) · tag hygiene (2) · project photos (3) · costing (4)
-2. Pattern PDFs (5) · bin labels (6)
-3. Tiled printing (7) — decide client-side vs server-side first
+1. Shopping list (1) · tag hygiene (2) · project photos (3) · costing (4) — the cheap, dependency-free
+   work that is left
+2. Pattern PDFs (5) · bin labels (6) — **built 2026-11-14**
+3. Tiled printing (7) — **built 2026-11-14** (client-side)
 4. Threadloop/Stash Hub import (9) · merge import (10)
 5. Envelope OCR (8) — after the disclosure question is answered, not before
 
@@ -211,5 +237,5 @@ decision last:
 
 Every new dependency gets a row in the register (`docs/technical-design.md` §10) and clears the
 licence gate, and every runtime or library gets the EOL/CVE check the brief's directive requires.
-No item above is allowed to weaken the verifications that already hold: 122 tests, and a client
-checked in a real browser.
+No item above is allowed to weaken the verifications that already hold: **162 tests**, and a client
+checked in a real browser at desktop and phone widths — with a screenshot for each surface.

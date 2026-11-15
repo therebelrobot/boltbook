@@ -1,4 +1,4 @@
-import type { AuthStatus, FabricPhoto } from '../shared/model'
+import type { AuthStatus, FabricPhoto, LocationSummary, PatternFile } from '../shared/model'
 
 export class ApiError extends Error {
   constructor(
@@ -60,9 +60,55 @@ export async function uploadPhoto(fabricId: string, blob: Blob, widthPx: number,
 
 export const photoUrl = (fabricId: string, photoId: string): string => `/api/fabrics/${fabricId}/photos/${photoId}`
 
+/** Upload the owned PDF; page count is metadata the client read with pdf.js. */
+export async function uploadPatternFile(patternId: string, file: File, pageCount: number | null): Promise<PatternFile> {
+  const params = new URLSearchParams({ filename: file.name || 'pattern.pdf' })
+  if (pageCount !== null && pageCount > 0) params.set('pageCount', String(pageCount))
+  const response = await fetch(`/api/patterns/${patternId}/file?${params}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'x-boltbook-request': '1', 'content-type': 'application/pdf' },
+    body: file,
+  })
+  if (!response.ok) throw await toApiError(response)
+  return (await response.json()) as PatternFile
+}
+
+export async function uploadPatternThumbnail(
+  patternId: string,
+  fileId: string,
+  blob: Blob,
+  widthPx: number,
+  heightPx: number,
+): Promise<PatternFile> {
+  const response = await fetch(
+    `/api/patterns/${patternId}/file/${fileId}/thumbnail?widthPx=${widthPx}&heightPx=${heightPx}`,
+    {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'x-boltbook-request': '1', 'content-type': blob.type || 'image/jpeg' },
+      body: blob,
+    },
+  )
+  if (!response.ok) throw await toApiError(response)
+  return (await response.json()) as PatternFile
+}
+
+export const deletePatternFile = (patternId: string) =>
+  api<{ ok: true }>(`/api/patterns/${patternId}/file`, { method: 'DELETE' })
+
+export const patternFileUrl = (patternId: string, fileId: string): string =>
+  `/api/patterns/${patternId}/file/${fileId}`
+
+export const patternThumbnailUrl = (patternId: string, fileId: string): string =>
+  `/api/patterns/${patternId}/file/${fileId}/thumbnail`
+
+export const getLocations = () => api<LocationSummary[]>('/api/locations')
+
 export interface RestoreResult {
   ok: true
   photos: number
+  patternFiles: number
   imported: Record<string, number>
 }
 

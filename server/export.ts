@@ -13,6 +13,9 @@ type Row = Record<string, unknown>
  *   should never carry a passphrase hash or an authenticator secret with it.
  * - `fabric_photo.bytes` — the bytes are the `photos/` entries; the JSON keeps
  *   the metadata and the filename to match them up.
+ * - `pattern_file.pdf_bytes` and `thumbnail_bytes` — pattern files are records,
+ *   so they are exported, but their bytes are the `pattern-files/` entries for
+ *   the same reason: base64 would inflate a 20 MB pattern by a third.
  */
 const TABLES = [
   'fabric',
@@ -36,6 +39,7 @@ export interface BuiltExport {
   entries: ZipEntry[]
   recordCount: number
   photoCount: number
+  patternFileCount: number
 }
 
 export function buildExport(database: Database, exportedAt: string): BuiltExport {
@@ -64,20 +68,62 @@ export function buildExport(database: Database, exportedAt: string): BuiltExport
     database.prepare('SELECT id, fabric_id, position, content_type, width_px, height_px, created_at FROM fabric_photo').all() as Row[]
   ).map((row) => ({ ...row, file: fileByPhotoId.get(String(row.id)) ?? null }))
 
+  // Pattern files: the PDF and its thumbnail become entries; the metadata keeps
+  // the pointers. One file per pattern, but written as a list for the reader.
+  const patternFileRows = database
+    .prepare(
+      `SELECT id, pattern_id, filename, content_type, page_count, thumbnail_content_type,
+              thumbnail_width_px, thumbnail_height_px, created_at, updated_at,
+              LENGTH(pdf_bytes) AS byte_size
+         FROM pattern_file`,
+    )
+    .all() as Row[]
+  const patternFileByteRows = database.prepare('SELECT id, pdf_bytes, thumbnail_bytes FROM pattern_file').all() as Row[]
+  const bytesByPatternFileId = new Map(patternFileByteRows.map((row) => [String(row.id), row]))
+  const patternFileMetadata = patternFileRows.map((row) => {
+    const id = String(row.id)
+    const bytes = bytesByPatternFileId.get(id)
+    const file = `pattern-files/${id}.pdf`
+    entries.push({ name: file, data: Buffer.from(bytes?.pdf_bytes as Uint8Array) })
+    const thumbnailContentType = row.thumbnail_content_type ? String(row.thumbnail_content_type) : null
+    const thumbnailFile =
+      thumbnailContentType && bytes?.thumbnail_bytes
+        ? `pattern-files/thumbs/${id}.${extensionForContentType(thumbnailContentType)}`
+        : null
+    if (thumbnailFile && bytes?.thumbnail_bytes) {
+      entries.push({ name: thumbnailFile, data: Buffer.from(bytes.thumbnail_bytes as Uint8Array) })
+    }
+    return { ...row, file, thumbnail_file: thumbnailFile }
+  })
+
   const json = {
     format: 'boltbook-export',
     version: 1,
     exportedAt,
-    note: 'Records, tags and photo metadata. Photo bytes are the photos/ entries. Credentials are never exported.',
-    tables: { ...tables, fabric_photo: photoMetadata },
+    note: 'Records, tags, photo metadata and pattern files. Bytes are the photos/ and pattern-files/ entries. Credentials are never exported.',
+    tables: { ...tables, fabric_photo: photoMetadata, pattern_file: patternFileMetadata },
   }
 
   entries.unshift({ name: 'boltbook.json', data: Buffer.from(JSON.stringify(json, null, 2), 'utf8') })
 
-  return { json: entries[0]!.data, entries, recordCount, photoCount: photoRows.length }
+  return {
+    json: entries[0]!.data,
+    entries,
+    recordCount,
+    photoCount: photoRows.length,
+    patternFileCount: patternFileRows.length,
+  }
 }
 
-export function buildExportZip(database: Database, exportedAt: string): { zip: Buffer; recordCount: number; photoCount: number } {
+export function buildExportZip(
+  database: Database,
+  exportedAt: string,
+): { zip: Buffer; recordCount: number; photoCount: number; patternFileCount: number } {
   const built = buildExport(database, exportedAt)
-  return { zip: createZip(built.entries, new Date(exportedAt)), recordCount: built.recordCount, photoCount: built.photoCount }
+  return {
+    zip: createZip(built.entries, new Date(exportedAt)),
+    recordCount: built.recordCount,
+    photoCount: built.photoCount,
+    patternFileCount: built.patternFileCount,
+  }
 }

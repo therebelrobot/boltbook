@@ -14,10 +14,11 @@ interface AuditEntry {
 
 interface SettingsScreenProps {
   onClose: () => void
+  onOpenLabels: () => void
   onSignedOut: () => void
 }
 
-export function SettingsScreen({ onClose, onSignedOut }: SettingsScreenProps) {
+export function SettingsScreen({ onClose, onOpenLabels, onSignedOut }: SettingsScreenProps) {
   const { unit, setUnit } = useUnit()
   const fileRef = useRef<HTMLInputElement>(null)
   const [summary, setSummary] = useState<Status | null>(null)
@@ -91,7 +92,11 @@ export function SettingsScreen({ onClose, onSignedOut }: SettingsScreenProps) {
       const result = await restoreExport(file)
       const fabrics = result.imported.fabric ?? 0
       const patterns = result.imported.pattern ?? 0
-      setNote(`Restored ${fabrics} fabric${fabrics === 1 ? '' : 's'}, ${patterns} pattern${patterns === 1 ? '' : 's'} and ${result.photos} photo${result.photos === 1 ? '' : 's'}.`)
+      setNote(
+        `Restored ${fabrics} fabric${fabrics === 1 ? '' : 's'}, ${patterns} pattern${patterns === 1 ? '' : 's'}, ` +
+          `${result.photos} photo${result.photos === 1 ? '' : 's'} and ` +
+          `${result.patternFiles} pattern PDF${result.patternFiles === 1 ? '' : 's'}.`,
+      )
       await refresh()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not restore that export.')
@@ -138,6 +143,15 @@ export function SettingsScreen({ onClose, onSignedOut }: SettingsScreenProps) {
         </button>
       </div>
 
+      <h3 style={{ fontSize: '0.9375rem' }}>Storage labels</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        A printable sheet of QR labels, one per location. Scanning one opens everything stored
+        there — fabric, thread, notions and tools together.
+      </p>
+      <button type="button" className="button" onClick={onOpenLabels}>
+        Print storage labels
+      </button>
+
       <h3 style={{ fontSize: '0.9375rem' }}>Authenticator</h3>
       {secret ? (
         <>
@@ -182,7 +196,8 @@ export function SettingsScreen({ onClose, onSignedOut }: SettingsScreenProps) {
 
       <h3 style={{ fontSize: '0.9375rem', marginTop: '1.25rem' }}>Export</h3>
       <p className="muted" style={{ marginTop: 0 }}>
-        One zip: every record as JSON, every photo as a file. Credentials are never included.
+        One zip: every record as JSON, every photo and pattern PDF as a file. Credentials are never
+        included.
       </p>
       <a className="button" href="/api/export" download>
         Download everything (.zip)
@@ -191,7 +206,7 @@ export function SettingsScreen({ onClose, onSignedOut }: SettingsScreenProps) {
       <h3 style={{ fontSize: '0.9375rem', marginTop: '1.25rem' }}>Restore</h3>
       <p className="muted" style={{ marginTop: 0 }}>
         Replaces every record in this instance with the contents of an export — your tags, views,
-        photos and projects included. Take an export first if you are unsure.
+        photos, pattern PDFs and projects included. Take an export first if you are unsure.
       </p>
       <input
         ref={fileRef}

@@ -1,0 +1,9 @@
+/*
+ * The one descriptor that cannot live in styles.css: @page cannot be selected
+ * by a class, so the print overlay swaps this same-origin stylesheet when the
+ * paper size changes.
+ */
+@page {
+  size: A4 portrait;
+  margin: 0;
+}

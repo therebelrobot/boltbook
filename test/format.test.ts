@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { formatLengthMm, formatMetres, formatQuantity, joinMeta, remainingFraction } from '../client/format'
+import { formatBytes, formatLengthMm, formatMetres, formatQuantity, joinMeta, remainingFraction } from '../client/format'
 
 test('lengths read as millimetres up to a metre, then metres', () => {
   assert.equal(formatLengthMm(850), '850 mm')
@@ -20,6 +20,14 @@ test('metres and quantities', () => {
 test('meta joins only the parts that exist', () => {
   assert.equal(joinMeta(['linen', null, 'Bin A']), 'linen · Bin A')
   assert.equal(joinMeta([false, undefined, '']), '')
+})
+
+test('file sizes are human-readable', () => {
+  assert.equal(formatBytes(512), '512 B')
+  assert.equal(formatBytes(15 * 1024), '15 kB')
+  assert.equal(formatBytes(1.5 * 1024 * 1024), '1.5 MB')
+  assert.equal(formatBytes(24 * 1024 * 1024), '24 MB')
+  assert.equal(formatBytes(null), '—')
 })
 
 test('the remaining fraction is clamped, and unknown when there is no original', () => {

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import type {
   Pattern,
+  PatternFile,
   PatternFilters,
   PatternInput,
   PatternRequirement,
@@ -18,10 +19,49 @@ type Row = Record<string, unknown>
 const PATTERN_COLUMNS = `id, name, brand, number, format, size_min, size_max, difficulty,
   category, source, year, tried_and_true, link_url, notes, created_at, updated_at`
 
+/** Metadata only; the PDF bytes are fetched by id so a list never loads a file. */
+const FILE_COLUMNS = `id, pattern_id, filename, content_type, page_count,
+  LENGTH(pdf_bytes) AS byte_size, thumbnail_content_type, thumbnail_width_px,
+  thumbnail_height_px, created_at, updated_at`
+
 const nullableText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value))
 const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
 
 const placeholders = (count: number): string => new Array(count).fill('?').join(', ')
+
+export interface PatternFileInput {
+  filename: string
+  contentType: string
+  bytes: Buffer
+  pageCount: number | null
+}
+
+export interface PatternThumbnailInput {
+  contentType: string
+  bytes: Buffer
+  widthPx: number | null
+  heightPx: number | null
+}
+
+function toFile(row: Row): PatternFile {
+  return {
+    id: String(row.id),
+    patternId: String(row.pattern_id),
+    filename: String(row.filename),
+    contentType: String(row.content_type),
+    pageCount: nullableNumber(row.page_count),
+    byteSize: Number(row.byte_size),
+    thumbnail: row.thumbnail_content_type
+      ? {
+          contentType: String(row.thumbnail_content_type),
+          widthPx: nullableNumber(row.thumbnail_width_px),
+          heightPx: nullableNumber(row.thumbnail_height_px),
+        }
+      : null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
+}
 
 function toRequirement(row: Row): PatternRequirement {
   return {
@@ -45,7 +85,7 @@ function toView(row: Row, requirements: PatternRequirement[]): PatternView {
   }
 }
 
-function toPattern(row: Row, views: PatternView[], tags: string[]): Pattern {
+function toPattern(row: Row, views: PatternView[], file: PatternFile | null, tags: string[]): Pattern {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -62,6 +102,7 @@ function toPattern(row: Row, views: PatternView[], tags: string[]): Pattern {
     linkUrl: nullableText(row.link_url),
     notes: nullableText(row.notes),
     views,
+    file,
     tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -132,6 +173,17 @@ export class PatternRepository {
     return byPattern
   }
 
+  /** One query for every pattern's file metadata, keyed by pattern id. */
+  #filesByPatternId(patternIds: string[]): Map<string, PatternFile> {
+    const byPattern = new Map<string, PatternFile>()
+    if (patternIds.length === 0) return byPattern
+    const rows = this.database
+      .prepare(`SELECT ${FILE_COLUMNS} FROM pattern_file WHERE pattern_id IN (${placeholders(patternIds.length)})`)
+      .all(...patternIds) as Row[]
+    for (const row of rows) byPattern.set(String(row.pattern_id), toFile(row))
+    return byPattern
+  }
+
   list(filters: PatternFilters = {}): Pattern[] {
     const where: string[] = []
     const parameters: Array<string | number> = []
@@ -164,14 +216,22 @@ export class PatternRepository {
       .all(...parameters) as Row[]
     const ids = rows.map((row) => String(row.id))
     const views = this.#viewsByPatternId(ids)
+    const files = this.#filesByPatternId(ids)
     const tags = this.tags.namesFor('pattern', ids)
-    return rows.map((row) => toPattern(row, views.get(String(row.id)) ?? [], tags.get(String(row.id)) ?? []))
+    return rows.map((row) =>
+      toPattern(row, views.get(String(row.id)) ?? [], files.get(String(row.id)) ?? null, tags.get(String(row.id)) ?? []),
+    )
   }
 
   get(id: string): Pattern | null {
     const row = this.database.prepare(`SELECT ${PATTERN_COLUMNS} FROM pattern WHERE id = ?`).get(id) as Row | undefined
     if (!row) return null
-    return toPattern(row, this.#viewsByPatternId([id]).get(id) ?? [], this.tags.namesFor('pattern', [id]).get(id) ?? [])
+    return toPattern(
+      row,
+      this.#viewsByPatternId([id]).get(id) ?? [],
+      this.#filesByPatternId([id]).get(id) ?? null,
+      this.tags.namesFor('pattern', [id]).get(id) ?? [],
+    )
   }
 
   #require(id: string): Row {
@@ -301,6 +361,77 @@ export class PatternRepository {
     this.#requireView(patternId, viewId)
     this.#requireRequirement(viewId, requirementId)
     this.database.prepare('DELETE FROM pattern_requirement WHERE id = ?').run(requirementId)
+    this.database.prepare('UPDATE pattern SET updated_at = ? WHERE id = ?').run(nowIso, patternId)
+  }
+
+  // ---------- the owned PDF ----------
+
+  #file(patternId: string): PatternFile | null {
+    return this.#filesByPatternId([patternId]).get(patternId) ?? null
+  }
+
+  /** Replacing a file deletes the old row, so the id — and therefore the cache key — changes. */
+  addFile(patternId: string, input: PatternFileInput, nowIso: string): PatternFile {
+    this.#require(patternId)
+    const id = randomUUID()
+    this.database.prepare('DELETE FROM pattern_file WHERE pattern_id = ?').run(patternId)
+    this.database
+      .prepare(
+        `INSERT INTO pattern_file (id, pattern_id, filename, content_type, page_count, pdf_bytes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, patternId, input.filename, input.contentType, input.pageCount, input.bytes, nowIso, nowIso)
+    this.database.prepare('UPDATE pattern SET updated_at = ? WHERE id = ?').run(nowIso, patternId)
+    return this.#file(patternId)!
+  }
+
+  setFileThumbnail(
+    patternId: string,
+    fileId: string,
+    input: PatternThumbnailInput,
+    nowIso: string,
+  ): PatternFile {
+    const current = this.#file(patternId)
+    if (!current || current.id !== fileId) {
+      throw new RecordNotFoundError(`No file ${fileId} on pattern ${patternId}.`)
+    }
+    this.database
+      .prepare(
+        `UPDATE pattern_file SET thumbnail_content_type = ?, thumbnail_bytes = ?,
+          thumbnail_width_px = ?, thumbnail_height_px = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(input.contentType, input.bytes, input.widthPx, input.heightPx, nowIso, fileId)
+    this.database.prepare('UPDATE pattern SET updated_at = ? WHERE id = ?').run(nowIso, patternId)
+    return this.#file(patternId)!
+  }
+
+  getFileBytes(patternId: string, fileId: string): { filename: string; contentType: string; bytes: Buffer } | null {
+    const row = this.database
+      .prepare('SELECT filename, content_type, pdf_bytes FROM pattern_file WHERE id = ? AND pattern_id = ?')
+      .get(fileId, patternId) as Row | undefined
+    if (!row) return null
+    return {
+      filename: String(row.filename),
+      contentType: String(row.content_type),
+      bytes: Buffer.from(row.pdf_bytes as Uint8Array),
+    }
+  }
+
+  getFileThumbnailBytes(patternId: string, fileId: string): { contentType: string; bytes: Buffer } | null {
+    const row = this.database
+      .prepare('SELECT thumbnail_content_type, thumbnail_bytes FROM pattern_file WHERE id = ? AND pattern_id = ?')
+      .get(fileId, patternId) as Row | undefined
+    if (!row || !row.thumbnail_content_type || !row.thumbnail_bytes) return null
+    return {
+      contentType: String(row.thumbnail_content_type),
+      bytes: Buffer.from(row.thumbnail_bytes as Uint8Array),
+    }
+  }
+
+  deleteFile(patternId: string, nowIso: string): void {
+    this.#require(patternId)
+    const result = this.database.prepare('DELETE FROM pattern_file WHERE pattern_id = ?').run(patternId)
+    if (Number(result.changes) === 0) throw new RecordNotFoundError(`No file on pattern ${patternId}.`)
     this.database.prepare('UPDATE pattern SET updated_at = ? WHERE id = ?').run(nowIso, patternId)
   }
 }

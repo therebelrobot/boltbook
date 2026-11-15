@@ -19,6 +19,7 @@ import { TagsRepository } from './repositories/tags'
 import { searchAll } from './repositories/search'
 import { buildExportZip } from './export'
 import { importExport } from './import'
+import { listLocations } from './locations'
 import {
   FABRIC_ALLOCATION_MEASURES,
   FABRIC_MEASURES,
@@ -97,6 +98,14 @@ const PROJECT_STATUSES: readonly ProjectStatus[] = ['planned', 'cutting', 'sewin
 /** Photos are downscaled in the browser before upload; these are the last line of defence. */
 const ALLOWED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024
+
+/**
+ * A pattern PDF is the one thing the app owns whole. 25 MB covers a full A0
+ * pattern with instructions; the export carries it as a file, not base64.
+ */
+const MAX_PATTERN_FILE_BYTES = 25 * 1024 * 1024
+const ALLOWED_THUMBNAIL_TYPES = new Set(['image/jpeg', 'image/png'])
+const MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024
 
 const STATUS_BY_AUTH_ERROR = {
   already_claimed: 409,
@@ -249,6 +258,19 @@ export function createApplication(dependencies: ApplicationDependencies) {
     return parsed
   }
 
+  /** A filename from a query string is a label, never a path. */
+  const patternFilename = (context: Context): string => {
+    const raw = (context.req.query('filename') ?? '').trim()
+    const basename = raw.split(/[\\/]/).pop()?.trim() ?? ''
+    return (basename || 'pattern.pdf').slice(0, 200)
+  }
+
+  /** ASCII fallback plus RFC 5987, so a non-Latin filename survives too. */
+  const contentDisposition = (filename: string, disposition: 'inline' | 'attachment'): string => {
+    const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\\r\n]/g, '_')
+    return `${disposition}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+  }
+
   // ---------- global headers ----------
 
   app.use('*', async (context, next) => {
@@ -265,9 +287,10 @@ export function createApplication(dependencies: ApplicationDependencies) {
 
   // ---------- API guards ----------
 
-  // Generous because an import is one zip of everything; the photo route keeps
-  // its own 8 MB rule, and the import route is guarded by mode=replace.
-  app.use('/api/*', bodyLimit({ maxSize: 64 * 1024 * 1024 }))
+  // Generous because an import is one zip of everything, now including pattern
+  // PDFs; the photo (8 MB) and pattern-file (25 MB) routes keep their own rules,
+  // and the import route is guarded by mode=replace.
+  app.use('/api/*', bodyLimit({ maxSize: 256 * 1024 * 1024 }))
   app.use('/api/*', async (context, next) => {
     context.header('Cache-Control', 'no-store')
     context.header('Pragma', 'no-cache')
@@ -382,7 +405,12 @@ export function createApplication(dependencies: ApplicationDependencies) {
     if (zip.byteLength === 0) throw new RecordValidationError('The upload was empty.')
     const result = importExport(database, zip)
     audit(context, 'imported')
-    return context.json({ ok: true, imported: result.tables, photos: result.photoCount })
+    return context.json({
+      ok: true,
+      imported: result.tables,
+      photos: result.photoCount,
+      patternFiles: result.patternFileCount,
+    })
   })
 
   app.post('/api/passphrase', async (context) => {
@@ -552,6 +580,71 @@ export function createApplication(dependencies: ApplicationDependencies) {
 
   app.delete('/api/patterns/:patternId', (context) => {
     patterns.delete(context.req.param('patternId'))
+    return context.json({ ok: true })
+  })
+
+  // The owned pattern PDF. One per pattern; replacing it changes the file id,
+  // which is the cache key, so a stale PDF can never be served.
+
+  app.post('/api/patterns/:patternId/file', async (context) => {
+    const contentType = (context.req.header('content-type') ?? '').split(';')[0]!.trim().toLowerCase()
+    if (contentType !== 'application/pdf') throw new RecordValidationError('A pattern file must be a PDF.')
+    const bytes = Buffer.from(await context.req.arrayBuffer())
+    if (bytes.byteLength === 0) throw new RecordValidationError('The PDF is empty.')
+    if (bytes.byteLength > MAX_PATTERN_FILE_BYTES) throw new RecordValidationError('The PDF is larger than 25 MB.')
+    const pageCount = optionalIntegerQuery(context, 'pageCount', 100_000)
+    const file = patterns.addFile(
+      context.req.param('patternId'),
+      {
+        filename: patternFilename(context),
+        contentType,
+        bytes,
+        pageCount: pageCount === 0 ? null : pageCount,
+      },
+      nowIso(),
+    )
+    return context.json(file, 201)
+  })
+
+  app.post('/api/patterns/:patternId/file/:fileId/thumbnail', async (context) => {
+    const contentType = (context.req.header('content-type') ?? '').split(';')[0]!.trim().toLowerCase()
+    if (!ALLOWED_THUMBNAIL_TYPES.has(contentType)) throw new RecordValidationError('The thumbnail must be JPEG or PNG.')
+    const bytes = Buffer.from(await context.req.arrayBuffer())
+    if (bytes.byteLength === 0) throw new RecordValidationError('The thumbnail is empty.')
+    if (bytes.byteLength > MAX_THUMBNAIL_BYTES) throw new RecordValidationError('The thumbnail is larger than 2 MB.')
+    const thumbnail = patterns.setFileThumbnail(
+      context.req.param('patternId'),
+      context.req.param('fileId'),
+      {
+        contentType,
+        bytes,
+        widthPx: optionalIntegerQuery(context, 'widthPx', 20_000),
+        heightPx: optionalIntegerQuery(context, 'heightPx', 20_000),
+      },
+      nowIso(),
+    )
+    return context.json(thumbnail, 201)
+  })
+
+  app.get('/api/patterns/:patternId/file/:fileId', (context) => {
+    const file = patterns.getFileBytes(context.req.param('patternId'), context.req.param('fileId'))
+    if (!file) throw new RecordNotFoundError('No such pattern file.')
+    context.header('Content-Type', file.contentType)
+    context.header('Content-Disposition', contentDisposition(file.filename, 'inline'))
+    context.header('Cache-Control', 'private, max-age=31536000, immutable')
+    return context.body(new Uint8Array(file.bytes))
+  })
+
+  app.get('/api/patterns/:patternId/file/:fileId/thumbnail', (context) => {
+    const thumbnail = patterns.getFileThumbnailBytes(context.req.param('patternId'), context.req.param('fileId'))
+    if (!thumbnail) throw new RecordNotFoundError('No such thumbnail.')
+    context.header('Content-Type', thumbnail.contentType)
+    context.header('Cache-Control', 'private, max-age=31536000, immutable')
+    return context.body(new Uint8Array(thumbnail.bytes))
+  })
+
+  app.delete('/api/patterns/:patternId/file', (context) => {
+    patterns.deleteFile(context.req.param('patternId'), nowIso())
     return context.json({ ok: true })
   })
 
@@ -781,6 +874,11 @@ export function createApplication(dependencies: ApplicationDependencies) {
     tags.delete(context.req.param('tagId'))
     return context.json({ ok: true })
   })
+
+  // Locations — derived from the free-text field, for the label sheet and the
+  // location screen a scanned label opens.
+
+  app.get('/api/locations', (context) => context.json(listLocations(database)))
 
   // Search
 

@@ -11,8 +11,10 @@
   "scripts": {
     "dev": "tsx watch server/main.ts",
     "dev:client": "vite",
+    "predev:client": "node scripts/copy-pdfjs-assets.mjs",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
+    "prebuild:client": "node scripts/copy-pdfjs-assets.mjs",
     "build:server": "esbuild server/main.ts --bundle --platform=node --format=esm --target=node24 --packages=bundle --banner:js=\"import { createRequire as __boltbookCreateRequire } from 'node:module'; const require = __boltbookCreateRequire(import.meta.url);\" --outfile=dist/server.mjs",
     "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
@@ -26,6 +28,8 @@
   "dependencies": {
     "@hono/node-server": "2.1.8",
     "hono": "4.13.18",
+    "pdfjs-dist": "6.5.438",
+    "qrcode-generator": "2.0.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "zod": "4.6.7"

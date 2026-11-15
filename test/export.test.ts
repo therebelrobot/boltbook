@@ -110,6 +110,40 @@ test('the export carries every table, the photos, and no credentials', async () 
   assert.equal(raw.includes('totp_secret'), false)
 })
 
+test('a pattern PDF and its thumbnail are exported as files, not base64', async () => {
+  const app = await freshApp()
+  const pattern = await readJson<{ id: string }>(await app.request('/api/patterns', json({ name: 'Archer' })))
+  const pdf = Buffer.from('%PDF-1.4\n% a pattern\n%%EOF\n')
+  const thumbnail = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7, 7, 7])
+  const file = await readJson<{ id: string }>(
+    await app.request(`/api/patterns/${pattern.id}/file?pageCount=6&filename=Archer.pdf`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/pdf' },
+      body: new Uint8Array(pdf),
+    }),
+  )
+  await app.request(`/api/patterns/${pattern.id}/file/${file.id}/thumbnail`, {
+    method: 'POST',
+    headers: { 'content-type': 'image/png' },
+    body: new Uint8Array(thumbnail),
+  })
+
+  const zip = await exportZip(app)
+  const names = listEntries(zip).map((entry) => entry.name)
+  assert.ok(names.includes(`pattern-files/${file.id}.pdf`))
+  assert.ok(names.includes(`pattern-files/thumbs/${file.id}.png`))
+  assert.deepEqual(readEntry(zip, `pattern-files/${file.id}.pdf`), pdf)
+  assert.deepEqual(readEntry(zip, `pattern-files/thumbs/${file.id}.png`), thumbnail)
+
+  const document = JSON.parse((readEntry(zip, 'boltbook.json') ?? Buffer.alloc(0)).toString('utf8')) as {
+    tables: { pattern_file: Array<{ id: string; file: string; thumbnail_file: string; page_count: number }> }
+  }
+  assert.equal(document.tables.pattern_file.length, 1)
+  assert.equal(document.tables.pattern_file[0]!.file, `pattern-files/${file.id}.pdf`)
+  assert.equal(document.tables.pattern_file[0]!.thumbnail_file, `pattern-files/thumbs/${file.id}.png`)
+  assert.equal(document.tables.pattern_file[0]!.page_count, 6)
+})
+
 test('an export is recorded in the audit log', async () => {
   const app = await freshApp()
   await exportZip(app)

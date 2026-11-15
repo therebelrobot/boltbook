@@ -23,13 +23,18 @@ export function Sheet({ title, onClose, children }: SheetProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
+      // A print overlay is a modal above this sheet; Escape belongs to it.
+      if (event.key === 'Escape' && !document.querySelector('.print-overlay')) onClose()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    // The header sits inside the drag surface, and pointer capture retargets the
+    // click to this element — which would swallow the Close button. Let real
+    // controls start their own gesture.
+    if ((event.target as HTMLElement).closest('button, a, input, textarea, select')) return
     dragState.current = { pointerId: event.pointerId, startY: event.clientY, startTime: performance.now(), velocity: 0 }
     event.currentTarget.setPointerCapture(event.pointerId)
     setDragging(true)

@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { api } from '../api'
+import { api, patternThumbnailUrl } from '../api'
 import { useCollection } from '../useCollection'
 import { EntitySheet } from '../components/EntitySheet'
+import { PatternFileField } from '../components/PatternFileField'
 import { ViewsEditor } from '../components/ViewsEditor'
 import { useToast } from '../components/Toast'
 import { PATTERN_FIELDS } from '../fields'
@@ -50,6 +51,19 @@ export function PatternsScreen() {
               key={pattern.id}
               onClick={() => setSheet({ mode: 'edit', id: pattern.id })}
             >
+              {pattern.file ? (
+                <img
+                  className="swatch"
+                  src={patternThumbnailUrl(pattern.id, pattern.file.id)}
+                  alt=""
+                  width={44}
+                  height={44}
+                />
+              ) : (
+                <span className="swatch" aria-hidden="true">
+                  {pattern.name.slice(0, 2)}
+                </span>
+              )}
               <span className="body">
                 <span className="title">{pattern.name}</span>
                 <span className="meta">
@@ -58,6 +72,7 @@ export function PatternsScreen() {
                     pattern.number,
                     pattern.category,
                     pattern.sizeMin && `size ${pattern.sizeMin}${pattern.sizeMax ? `–${pattern.sizeMax}` : ''}`,
+                    pattern.file && `PDF${pattern.file.pageCount ? ` · ${pattern.file.pageCount} pp` : ''}`,
                     pattern.tags.length > 0 && pattern.tags.map((tag) => `#${tag}`).join(' '),
                   ]) || 'No details yet'}
                 </span>
@@ -88,9 +103,17 @@ export function PatternsScreen() {
           onClose={() => setSheet(null)}
         >
           {sheet.mode === 'edit' && record ? (
-            <ViewsEditor pattern={record} onChanged={() => void reload()} />
+            <>
+              <PatternFileField
+                patternId={sheet.id}
+                patternName={record.name}
+                file={record.file}
+                onChanged={() => void reload()}
+              />
+              <ViewsEditor pattern={record} onChanged={() => void reload()} />
+            </>
           ) : (
-            <p className="muted">Save the pattern, then add its views and yardage.</p>
+            <p className="muted">Save the pattern, then add its views, yardage and PDF.</p>
           )}
         </EntitySheet>
       )}

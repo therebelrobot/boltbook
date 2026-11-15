@@ -263,3 +263,26 @@ Resolved with the author, 2026-11-14:
 | Theme: system-only or a manual toggle? | **System only** | Follow `prefers-color-scheme`; no in-app toggle in v1. |
 | Does swipe-to-delete fight the list scroll? | **No — the gesture stays** | Gate on horizontal intent (~10 px) so a vertical scroll is never stolen; keep the undo toast. |
 | A photo of the finished garment? | **Yes, and optional** | One optional photo when a project reaches `done`; never required, never blocking. |
+| Does a scanned storage label open a filter or a place? | **A place** | `#/location/<name>` lists every kind stored there; it answers "what is in this bin?" without first choosing a stash tab. |
+| Tiled print: server or client? | **Client** | pdf.js rasterises in the browser; no pattern leaves the box and no server renderer enters the dependency register. |
+
+---
+
+## 13. Print
+
+Print is a **different surface**, not a screen with a different stylesheet.
+
+- **Paper is white and ink is black**, in both colour schemes. Do not print the dark theme. Use
+  `print-color-adjust: exact` so the QR stays black and the dashed cut lines survive.
+- **Labels**: 2 × 5 at 88 × 46 mm, 8 mm page padding, A4 or Letter — the same grid fits both. The
+  QR is 34 mm at error-correction H; the centre mark is ≈3% of the code, well inside H's recovery.
+  Name first, counts second, the app name as a small kicker. A dashed cut line, not a solid box.
+- **Tiled print**: 100% physical scale (never "fit to page"), 10 mm default overlap, a 4 mm
+  registration cross at each corner, and a **50 mm scale-check square on the first sheet**. Each
+  sheet says where it belongs (`P1 · 1/5 · 1/5 · 1/25`) in 6 pt grey. Print at actual size, margins
+  off; the hint says so.
+- **The preview is a page, not a form.** On a phone a 210 mm page is wider than the viewport, so the
+  preview scrolls from its left edge (`justify-content: safe center`) — never centring the overflow
+  out of reach. The controls stay above it; on print they disappear.
+- **Print never traps.** Escape or Close leaves the overlay; a sheet underneath does not also close
+  on that Escape.

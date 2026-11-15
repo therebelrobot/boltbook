@@ -11,6 +11,15 @@ export function formatMetres(metres: number | null | undefined): string {
   return `${metres} m`
 }
 
+/** Bytes as a person reads them: 1.4 MB, not 1,431,552. */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined) return '—'
+  if (bytes < 1024) return `${bytes} B`
+  const megabytes = bytes / (1024 * 1024)
+  if (megabytes >= 1) return `${megabytes.toFixed(megabytes >= 10 ? 0 : 1)} MB`
+  return `${(bytes / 1024).toFixed(0)} kB`
+}
+
 export function formatQuantity(value: number | null | undefined, unit?: string | null): string {
   if (value === null || value === undefined) return '—'
   return unit ? `${value} ${unit}` : String(value)

@@ -87,8 +87,8 @@ Fabric and patterns are both first-class from day one, linked.
   difficulty, category, source, year, notes, tags, link.
 - **Views:** a pattern has one or more views (A/B/C), each with its own yardage requirement
   and notions.
-- Attach files: a pattern links to a PDF or scans. The record holds the link and a page
-  count; it is not a file host.
+- Attach files: a pattern **owns** its PDF — the file, its page count and a first-page thumbnail
+  live with the record (v2). It still may carry a link to a source elsewhere.
 - Marked *tried and true*: a pattern known to fit.
 
 ### In, v1 — notions, thread and tools
@@ -221,5 +221,6 @@ Given/When/Then. UAT judges against these.
 
 - Tier: Lightweight or Comprehensive? *(provisional: Lightweight.)*
 - Port and host: deployment-specific; not recorded in the repo.
-- Does a pattern *own* its attached PDF, or link to one already on disk?
+- ~~Does a pattern *own* its attached PDF, or link to one already on disk?~~ **Answered (v2):** it
+  owns it — the file is stored with the record, capped at 25 MB, and exported with it.
 - Do notions belong in v1, or is fabric + patterns + the link enough to start?

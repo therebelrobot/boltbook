@@ -26,6 +26,7 @@ const DELETE_ORDER = [
   'project_notion',
   'project',
   'fabric_photo',
+  'pattern_file',
   'pattern_requirement',
   'pattern_view',
   'pattern',
@@ -56,6 +57,7 @@ const INSERT_ORDER = [
 export interface ImportResult {
   tables: Record<string, number>
   photoCount: number
+  patternFileCount: number
 }
 
 export function importExport(database: Database, zip: Buffer): ImportResult {
@@ -98,6 +100,7 @@ export function importExport(database: Database, zip: Buffer): ImportResult {
 
   const counts: Record<string, number> = {}
   let photoCount = 0
+  let patternFileCount = 0
 
   database.exec('BEGIN')
   try {
@@ -121,6 +124,22 @@ export function importExport(database: Database, zip: Buffer): ImportResult {
     }
     counts.fabric_photo = photoCount
 
+    // Pattern files: metadata from the JSON, PDF and thumbnail bytes from their
+    // entries. A row without its PDF entry is skipped rather than half-written.
+    const patternFileRows = Array.isArray(tables.pattern_file) ? tables.pattern_file! : []
+    for (const row of patternFileRows) {
+      const file = typeof row.file === 'string' ? entries.get(row.file) : undefined
+      if (!file) continue
+      const thumbnail =
+        typeof row.thumbnail_file === 'string' ? entries.get(row.thumbnail_file) : undefined
+      const withBytes: Row = { ...row, pdf_bytes: file, thumbnail_bytes: thumbnail ?? null }
+      delete withBytes.file
+      delete withBytes.thumbnail_file
+      insert('pattern_file', withBytes)
+      patternFileCount += 1
+    }
+    counts.pattern_file = patternFileCount
+
     database.exec('COMMIT')
   } catch (error) {
     database.exec('ROLLBACK')
@@ -130,5 +149,5 @@ export function importExport(database: Database, zip: Buffer): ImportResult {
     throw new RecordValidationError(`That export could not be restored: ${error instanceof Error ? error.message : 'unknown error'}`)
   }
 
-  return { tables: counts, photoCount }
+  return { tables: counts, photoCount, patternFileCount }
 }
