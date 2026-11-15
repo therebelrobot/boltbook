@@ -74,7 +74,9 @@ import type {
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self'",
+  // Tesseract compiles its OCR core to WebAssembly in a same-origin worker.
+  // This token allows WASM compilation only; it does not allow eval or inline JS.
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self'",
   // blob: is what the pending-photo preview uses before upload; without it the
   // image is blocked inline while the blob URL still opens in a new tab.

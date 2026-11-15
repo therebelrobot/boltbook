@@ -22,8 +22,10 @@ Local-first, no account, runs on your own box. Mobile-first: designed for the ph
 | **Tagging** — one vocabulary, offered as chips | **Views and yardage** — what each view of a pattern takes | **Pattern PDF** — the file belongs to the pattern, with its page count and preview |
 | ![Labels](docs/screenshots/13-labels.png) | ![Location](docs/screenshots/14-location.png) | ![Labels printed](docs/screenshots/15-labels-printed.png) |
 | **Labels** — one QR per storage location, with what is in it | **Location** — a scanned label opens every record in that bin | **Labels, printed** — 2 × 5 on A4 or Letter, at 100% |
-| ![Tiled print](docs/screenshots/16-tiled-print.png) | ![Patterns on a phone](docs/screenshots/17-patterns-mobile.png) | |
-| **Tiled print** — a pattern at full size, marks and a 50 mm check | **Patterns on a phone** — the thumbnail says a PDF is attached | |
+| ![Tiled print](docs/screenshots/16-tiled-print.png) | ![Patterns on a phone](docs/screenshots/17-patterns-mobile.png) | ![Scan an envelope](docs/screenshots/18-scan-review.png) |
+| **Tiled print** — a pattern at full size, marks and a 50 mm check | **Patterns on a phone** — the thumbnail says a PDF is attached | **Scan an envelope** — the photo is read on the device; the fields are prefilled for review |
+| ![What it read](docs/screenshots/19-scan-details.png) | ![Saved](docs/screenshots/20-scan-saved.png) | |
+| **What it read** — confidence, view letters and the raw text; nothing saves until you do | **Saved** — the pattern and its views, with the fields it read | |
 
 ## Where it fits
 
@@ -49,6 +51,10 @@ fabric on the shelf and the patterns in the box, and answers the question a proj
 - **Pattern PDFs** — the pattern owns its PDF (25 MB cap) with a page count and a first-page
   thumbnail; open it in a tab, export it with the records, or **print it tiled** across A4 or
   Letter at 100% with overlap, registration marks and a 50 mm scale check.
+- **Scan an envelope** — photograph a pattern envelope; a **local WASM OCR model** reads it in the
+  browser. Brand, number, name, size range, format, category and view letters are prefilled for
+  review, with the raw text and a confidence. Nothing is uploaded, and nothing is saved until you
+  press Save.
 - **Storage labels** — a printable sheet of QR labels, one per location. Scanning one opens a
   location screen listing every fabric, thread, notion and tool in that bin.
 - **Tags** — one vocabulary shared by every record, filterable, and searchable.
@@ -79,6 +85,14 @@ names back. See `docs/technical-design.md` §5.
   Letter, 200–400 dpi and the overlap, then print at **100% / actual size** with margins off. The
   sheets overlap by 10 mm by default; the corner marks line up when taped in order, and the first
   sheet carries a 50 mm scale-check square.
+
+## Scan an envelope
+
+**Patterns → Scan an envelope.** The photo is downscaled and EXIF-stripped in the browser, then read
+by a local Tesseract **WebAssembly** worker — no upload and no third-party OCR. The suggested
+fields, the raw text and the confidence are shown for review; low confidence is called out, and the
+view letters it finds become views when you save. It never auto-saves. The first scan loads about
+10 MB of engine and English model; later scans use the browser cache.
 
 ## Run it
 
@@ -140,8 +154,8 @@ then claim the instance again with the setup token.
 
 ## Status
 
-**v1 complete — M1–M7. v2a built — pattern PDFs, storage labels and tiled printing.** The
-backend, the client, and shipping are all real:
+**v1 complete — M1–M7. v2a and v2b built — pattern PDFs, storage labels, tiled printing and local
+envelope OCR.** The backend, the client, and shipping are all real:
 
 - **Server** — fabrics (with photos), patterns with views, requirements and an owned PDF, notions,
   thread and tools, tags, projects with allocation and the shortfall rule, FTS5 search across the
@@ -150,19 +164,21 @@ backend, the client, and shipping are all real:
 - **Client** — React + Vite, mobile-first: bottom navigation, camera-first fabric capture with
   client-side downscale and EXIF stripping, drag-to-dismiss sheets, delete with undo, the yardage
   meter, tags, the pattern views/requirements editor, a per-device metric/imperial choice, the
-  pattern PDF card with a client-rendered thumbnail, the location screen, the QR label sheet, and
-  the tiled print preview. All verified in a real browser (the screenshots above), at desktop and
-  phone widths; an A0 fixture prints to 25 A4 pages with the 50 mm check, and a printed label QR
-  decodes back to its location URL.
+  pattern PDF card with a client-rendered thumbnail, the location screen, the QR label sheet, the
+  tiled print preview, and **local envelope OCR** (Tesseract WASM in a worker, no upload) with a
+  review-before-save flow. All verified in a real browser (the screenshots above), at desktop and
+  phone widths; an A0 fixture prints to 25 A4 pages with the 50 mm check, a printed label QR
+  decodes back to its location URL, and an envelope scan prefilled and saved with its view letters.
 - **Ship** — a multi-stage Docker image with no `node_modules` in the runtime layer, `compose.yaml`,
   CI that typechecks/builds/tests and builds both architectures, and a GHCR publish workflow with
   provenance and an SBOM. The image was built and run: it serves the client, claims, persists to a
-  volume, reports healthy, and survives a restart.
+  volume, reports healthy, and survives a restart. The build stage now copies `scripts/`, runs the
+  pdf.js and Tesseract asset copy, and asserts the worker/WASM/model files are in `dist/`.
 
-162 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
+174 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
 
-**Not yet:** the rest of v2 — shopping list, tag hygiene, project photos, costing, imports and
-envelope OCR. See [`docs/v2-plan.md`](docs/v2-plan.md).
+**Not yet:** the rest of v2 — shopping list, tag hygiene, project photos, costing, and imports
+(Threadloop/Stash Hub and merge). See [`docs/v2-plan.md`](docs/v2-plan.md).
 
 ## Docs
 

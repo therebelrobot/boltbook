@@ -2,8 +2,8 @@
 
 **Document version:** 1.1 · **Last updated:** 2026-11-14
 **Companion:** `product-brief.md`, `adr/0001-no-encryption-at-rest.md`
-**Status:** v1 built; v2 in progress — pattern PDFs, storage labels and tiled printing are
-built (v2-plan §5–§7).
+**Status:** v1 built; v2 in progress — pattern PDFs, storage labels, tiled printing and local
+envelope OCR are built (v2-plan §5–§8).
 
 ---
 
@@ -70,6 +70,8 @@ client/
   pdf.ts           pdf.js: page count, first-page thumbnail, tiled raster
   tiling.ts        paper and tile geometry (pure, unit-tested)
   qr.ts            QR matrix and label URLs (pure, unit-tested)
+  ocr.ts           Tesseract WASM in a Web Worker: progress, cancel
+  envelope.ts      envelope text → suggested fields (pure, unit-tested)
   components/      AppShell, Sheet, EntitySheet, PhotoField, PatternFileField,
                    PrintOverlay, QrSvg, Toast
   screens/         Access, Stash, Patterns, Projects, Search, Settings,
@@ -189,6 +191,10 @@ Single user. The house auth model, minus the vault. **Built at M4.**
 
 Global hardening headers (CSP, `X-Frame-Options: DENY`, `no-referrer`, HSTS when secure,
 `X-Robots-Tag: noindex`) are set on every response, as in `reframe`.
+
+The CSP is `script-src 'self' 'wasm-unsafe-eval'`. The narrower WASM token exists only so the local
+envelope OCR can compile its same-origin core; it does **not** allow `eval`, inline script or a
+remote script. `test/ocr.test.ts` asserts the token is present and that `'unsafe-eval'` is not.
 
 ## 5. API surface
 
@@ -333,6 +339,33 @@ to place one image per page.
   `pattern-files/thumbs/<id>.<ext>`; restore matches the metadata rows to those entries the same
   way it matches photos.
 
+### Envelope scan (v2, built 2026-11-14)
+
+The v2 item that used to need a disclosure decision is now local: **Tesseract compiled to
+WebAssembly**, running in a Web Worker in the browser. There is no third-party OCR and no image
+upload.
+
+- `preparePhoto` downscales and re-encodes the phone photo (stripping EXIF) before OCR; the blob is
+  handed to the worker in memory and revoked when the review closes.
+- The worker, SIMD+LSTM core and 2.8 MB English `best_int` model are copied from `node_modules` by
+  `scripts/copy-ocr-assets.mjs` at `predev:client`/`prebuild:client` into
+  `client/public/ocr/` (gitignored). `tesseract.js` is dynamically imported, so the initial bundle
+  is unaffected. The first scan downloads ~9.6 MB; later scans use the browser cache.
+- The allow-list `workerPath`/`corePath`/`langPath` are same-origin; `workerBlobURL:false` keeps the
+  worker under the `worker-src` fallback to `script-src 'self'`.
+- The parser (`client/envelope.ts`) is pure: brands (the big houses plus independent companies),
+  pattern numbers (including house prefixes such as `M7969`, excluding years), numeric/alpha size
+  ranges, view letters (including OCR's `VIEWA/B`), format (PDF/book/envelope), a category keyword,
+  and a conservative name heuristic. Every result is a suggestion; the review sheet shows the
+  confidence and the raw text, and low confidence is called out.
+- **Nothing is auto-saved.** The photo is not attached to the record; the raw text is shown but not
+  stored. Saving creates the pattern, then any view letters it found; a failed view creation leaves
+  a complete pattern and a toast, not a half-written record.
+- The scan is cancellable (`worker.terminate()`), the preview URL is revoked, and the progress sheet
+  is a normal sheet with a Close/Escape path. The photo is read on the device; the copy says so.
+- The Docker build stage copies `scripts/` and asserts the generated OCR/pdf.js assets exist in
+  `dist/`, so a source-only build cannot ship a UI whose OCR 404s.
+
 ## 8. Allocation and shortfall
 
 The one piece of real domain logic, kept pure in `server/shortfall.ts` so it is tested without a
@@ -402,6 +435,9 @@ the set already proven in `resonate`/`reframe`; exact pins, no floating majors.
 | `@types/node` | ^26 | MIT | Node 26 types |
 | `pdfjs-dist` | 6.5.438 | Apache-2.0 | Page count, first-page thumbnail and tiled raster (client, lazy) |
 | `qrcode-generator` | 2.0.4 | MIT | QR matrices for storage labels |
+| `tesseract.js` | 7.0.0 | Apache-2.0 | Local envelope OCR (client, lazy) |
+| `tesseract.js-core` | 7.0.0 | Apache-2.0 | WASM OCR core (SIMD+LSTM), transitive |
+| `@tesseract.js-data/eng` | 1.0.0 | MIT | English traineddata (build-time asset) |
 
 `node:sqlite` is built into Node 26 — no dependency, no native build. Per the standing
 directive, the **EOL and CVE check runs at M1** across this list before any of it is installed;
@@ -414,7 +450,16 @@ a ~444 KB chunk plus a 1.27 MB worker. The assets are copied to `client/public/p
 `scripts/copy-pdfjs-assets.mjs` on `predev:client`/`prebuild:client` and served same-origin. The
 optional `@napi-rs/canvas` is only for pdf.js's Node legacy build, which the app does not use.
 `npm audit` is clean, and both licences clear the Unlicense gate. The browser build is checked
-against `script-src 'self'`; the worker is same-origin and no `eval` path is used.
+against `script-src 'self' 'wasm-unsafe-eval'`; the worker is same-origin and no `eval` path is used.
+
+**OCR additions (2026-11-14).** `tesseract.js` 7 is a runtime dependency (a ~17 KB lazy chunk; the
+engine itself is the worker/WASM assets). Its core is transitive; `@tesseract.js-data/eng` is a
+**devDependency** only because the 2.8 MB `best_int` English model is copied into
+`client/public/ocr/lang/` at build time. The browser never fetches from a CDN. Total first-scan
+assets are ~9.6 MB (109 KB worker, 3.8 MB core wrapper, 2.8 MB WASM, 2.9 MB model); the model is
+cached in IndexedDB by Tesseract. The CSP gains `'wasm-unsafe-eval'` for the core; it is not a
+general eval grant. `npm audit` is clean and the licences (Apache-2.0 for the engine/core, MIT for
+the data package) clear the Unlicense gate.
 
 **M1 outcome.** Installed and `npm audit`-clean. The starting pins were raised to the current
 releases after the audit: `zod` 4.6.5 carried **GHSA-mrhx-c7xc-m3w5** (high, memory exhaustion
@@ -438,7 +483,8 @@ land at M5.
 | M6 | Export + backup | zip export from the API and Settings, `npm run backup` — **done** |
 | M7 | Ship | Dockerfile (multi-stage), compose, CI + GHCR publish workflows, deployment notes — **done** |
 | v2a | Pattern files + print | migration 8, owned PDF + thumbnail, `/api/locations`, QR labels, location screen, client-side tiled print — **done** |
-| v2 | Beyond v1 | The rest: shopping list, tag hygiene, project photos, costing, imports, OCR — scoped in `v2-plan.md` |
+| v2b | Envelope scan | local Tesseract WASM in a Worker, envelope parser, review-before-save, view suggestions — **done** |
+| v2 | Beyond v1 | The rest: shopping list, tag hygiene, project photos, costing, imports — scoped in `v2-plan.md` |
 
 Auth (M4) could land before M1's later parts; the plan keeps it early enough that nothing ships
 unauthenticated.
@@ -460,10 +506,18 @@ unauthenticated.
 - **Instance:** a fresh `:memory:` app prints one setup token; `POST /api/setup` twice fails the
   second time; an unauthenticated `/api/*` read is refused with no data.
 - **Perf:** a 100+ fabric stash filters under a second (brief §7).
+- **Envelope OCR (v2b):** `test/envelope.test.ts` covers brands, house-prefixed numbers, years
+  that must not become numbers, numeric and alpha size ranges, views (including OCR's `VIEWA/B`),
+  format, category, the name heuristic, and empty/noisy text; `test/ocr.test.ts` asserts the CSP
+  allows WASM without `'unsafe-eval'`.
 - **Browser (v2a, 2026-11-14):** an A0 test PDF uploaded through the real client, previewed and
   printed to **25 A4 pages at 210 × 297 mm**, with the 50 mm check square; a storage-label QR
   decoded by OpenCV back to `…/#/location/Bin A`; the location screen, labels and tiled sheet
-  checked at 1280 × 720 and 390 × 844. 162 tests, `tsc` clean, `npm audit` clean.
+  checked at 1280 × 720 and 390 × 844.
+- **Browser (v2b, 2026-11-14):** a synthetic envelope scanned through the real client in a local
+  Tesseract worker: 88% confidence, `Hinterland Shirt` / `Sew Liberated` / `1234` / `pdf` / `shirt`
+  / sizes 0–18 / views A, B, then saved and read back with **2 views**; the review checked at
+  1280 × 720 and 390 × 844. 174 tests, `tsc` clean, `npm audit` clean.
 
 ## 13. Open decisions
 
@@ -473,4 +527,8 @@ unauthenticated.
   record, capped at 25 MB. Page count and thumbnail are client-rendered, so no server PDF parser.
 - **Tiled printing — resolved 2026-11-14.** Client-side pdf.js, 100% physical scale, A4/Letter,
   10 mm default overlap; no server renderer and no pattern data leaves the box.
+- **Envelope OCR — resolved 2026-11-14.** Local browser WASM (Tesseract.js) in a worker; no third
+  party and no upload. The photo is discarded after review, the raw text is not stored, and every
+  result is a suggestion the person confirms. The engine is lazy-loaded; the CSP gains only
+  `'wasm-unsafe-eval'`.
 - **Pattern source**: free-text, or a curated list of houses (Simplicity, McCall's, …)?

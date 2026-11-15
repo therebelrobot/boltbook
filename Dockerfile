@@ -10,10 +10,18 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY tsconfig.json vite.config.ts ./
+COPY scripts ./scripts
 COPY client ./client
 COPY server ./server
 COPY shared ./shared
-RUN npm run build
+# `npm run build` runs prebuild:client, which copies the pdf.js and Tesseract
+# worker/WASM/model assets into client/public. Those are generated, not source.
+RUN npm run build \
+ && test -f dist/client/ocr/worker.min.js \
+ && test -f dist/client/ocr/lang/eng.traineddata.gz \
+ && test -f dist/client/ocr/core/tesseract-core-simd-lstm.wasm \
+ && test -d dist/client/pdfjs/cmaps \
+ && test -f dist/client/pdfjs/standard_fonts/FoxitSerif.pfb
 
 # ---- runtime -------------------------------------------------------------
 FROM node:26.13.1-bookworm-slim AS runtime

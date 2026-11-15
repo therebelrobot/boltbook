@@ -17,5 +17,6 @@ data/
 # Local compose overrides hold real hostnames and ports.
 compose.override.yaml
 
-# pdf.js assets are copied from node_modules by scripts/copy-pdfjs-assets.mjs.
+# pdf.js and Tesseract assets are copied from node_modules at dev/build time.
 client/public/pdfjs/
+client/public/ocr/

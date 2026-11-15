@@ -1,8 +1,8 @@
 # boltbook — v2 plan
 
-v1 is complete (§11 of the technical design). **Items 5–7 are built (2026-11-14)** — owned
-pattern PDFs, bin and box labels, and tiled PDF printing. The rest is **mapped, not started**.
-Nothing here is a promise; pick from it.
+v1 is complete (§11 of the technical design). **Items 5–8 are built (2026-11-14)** — owned
+pattern PDFs, bin and box labels, tiled PDF printing, and local envelope OCR. The rest is **mapped,
+not started**. Nothing here is a promise; pick from it.
 
 Each entry says what it touches, what it needs that does not exist yet, and the decision that
 would have to be made first. Sizes are rough: **S** is an afternoon, **M** a day or two, **L** is
@@ -159,6 +159,22 @@ technical one** — it must be opt-in, off by default, and say plainly what leav
 model (or a local OCR pass) avoids the question entirely at the cost of accuracy and size. Nothing
 is built until that is answered.
 
+**Built 2026-11-14 — local browser WASM.** Aster chose local OCR, and the WASM runs in the browser:
+Tesseract.js 7 plus its SIMD+LSTM core and a 2.8 MB English `best_int` model, copied from
+`node_modules` into `client/public/ocr/` by `scripts/copy-ocr-assets.mjs`. The engine is lazily
+imported; the first scan loads ~9.6 MB and later scans use the browser cache. The photo is
+downscaled and EXIF-stripped, read in a Web Worker, and never uploaded; the preview blob is revoked
+and the raw text is not stored. The CSP gains only `'wasm-unsafe-eval'`, not `'unsafe-eval'`.
+
+The pure parser (`client/envelope.ts`) suggests a brand (the big houses plus independent
+companies), a number (including `M7969`-style house prefixes, excluding years), a numeric or alpha
+size range, view letters (including OCR's `VIEWA/B`), format, category and a conservative name.
+The review sheet shows the confidence and the raw text; low confidence is called out; nothing is
+auto-saved. Saving creates the pattern and then the detected views; a failed view creation leaves a
+complete pattern and a toast. Tests: 11 parser cases plus the CSP; a synthetic envelope in the real
+client read at **88% confidence** and saved with **2 views**. The first scan's
+`Estimating resolution as 511` console line is a Tesseract core log, not a failure.
+
 ---
 
 ## 9. Import from Threadloop / Stash Hub — M
@@ -231,11 +247,11 @@ decision last:
 2. Pattern PDFs (5) · bin labels (6) — **built 2026-11-14**
 3. Tiled printing (7) — **built 2026-11-14** (client-side)
 4. Threadloop/Stash Hub import (9) · merge import (10)
-5. Envelope OCR (8) — after the disclosure question is answered, not before
+5. Envelope OCR (8) — **built 2026-11-14** (local browser WASM)
 
 ## Standing rule for all of it
 
 Every new dependency gets a row in the register (`docs/technical-design.md` §10) and clears the
 licence gate, and every runtime or library gets the EOL/CVE check the brief's directive requires.
-No item above is allowed to weaken the verifications that already hold: **162 tests**, and a client
+No item above is allowed to weaken the verifications that already hold: **174 tests**, and a client
 checked in a real browser at desktop and phone widths — with a screenshot for each surface.

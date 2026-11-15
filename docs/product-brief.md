@@ -89,6 +89,9 @@ Fabric and patterns are both first-class from day one, linked.
   and notions.
 - Attach files: a pattern **owns** its PDF — the file, its page count and a first-page thumbnail
   live with the record (v2). It still may carry a link to a source elsewhere.
+- **Envelope capture (v2):** photograph an envelope and the client reads it locally — brand,
+  number, name, size range and views are prefilled for review. The photo is not uploaded and
+  nothing is saved until the person confirms it.
 - Marked *tried and true*: a pattern known to fit.
 
 ### In, v1 — notions, thread and tools

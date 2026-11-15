@@ -286,3 +286,29 @@ Print is a **different surface**, not a screen with a different stylesheet.
   out of reach. The controls stay above it; on print they disappear.
 - **Print never traps.** Escape or Close leaves the overlay; a sheet underneath does not also close
   on that Escape.
+
+---
+
+## 14. Scan an envelope
+
+The scan is a **capture path**, not a second editor. It exists to remove typing, not to make a
+decision.
+
+- **Camera-first, like fabric.** "Scan an envelope" opens the camera from the tap. The normal "Add
+  pattern" form stays; the scan is the optional shortcut, never the only way in.
+- **The photo stays on the device.** Say so where the photo is shown: *"Read on this device. The
+  photo is not uploaded."* The photo is a preview, not a stored pattern photo; it is discarded when
+  the review closes.
+- **Review, never auto-save.** The scan produces suggestions in the ordinary pattern form: brand,
+  number, name, size range, format, category. The name heuristic is the weakest field and must be
+  editable without fuss. The raw text is one tap away, and a confidence below 65% is a **warning**,
+  not a block.
+- **Views are a suggestion too.** The letters found near "view" are shown as a sentence — *"Views
+  detected: A, B. They will be created with the pattern."* — and are created after the pattern is
+  saved, not silently during OCR.
+- **Progress is cancellable.** Loading the engine and model has a named stage ("Loading the English
+  model…"), a progress bar and a Cancel that terminates the worker. Close and Escape do the same.
+  Do not leave a person watching an unexplained spinner on a phone.
+- **No upload, no third party.** The OCR engine and English model are served by this app, and the
+  worker is same-origin. This is the whole reason the feature is local; do not quietly add a cloud
+  fallback.
