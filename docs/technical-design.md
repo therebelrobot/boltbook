@@ -101,9 +101,14 @@ display.
 fabric(id PK, name, fibre, weight, colour, print_type, width_mm,
        length_mm, original_length_mm, source, cost_minor, currency,
        acquired_on, location, care, notes, created_at, updated_at)
+       -- v2: gains `role` (garment | lining | interfacing | interlining | canvas | backing |
+       --     muslin | other), one vocabulary with pattern_requirement.role (v2-plan §22)
 
 fabric_photo(id PK, fabric_id FK→fabric ON DELETE CASCADE, position,
              content_type, bytes BLOB, width_px, height_px)
+             -- v2: generalises to photo(id, entity_type, entity_id, position, content_type,
+             --     bytes, width_px, height_px), so every record — fabric, thread, notion, tool,
+             --     pattern, project — can carry a photo; existing rows are copied (§7, v2-plan §3)
 
 pattern(id PK, brand, number, name, format, size_min, size_max, difficulty,
         category, source, year, tried_and_true INTEGER, link_url, notes,
@@ -115,10 +120,12 @@ pattern_view(id PK, pattern_id FK→pattern ON DELETE CASCADE, label,
 pattern_requirement(id PK, pattern_view_id FK→pattern_view ON DELETE CASCADE,
                     role, fabric_width_mm, length_mm, note)
                     -- role: main | lining | interfacing | other
+                    --       (v2: one vocabulary with fabric.role — v2-plan §22)
 
 notion(id PK, name, kind, colour, spec, quantity REAL, unit, location,
        notes, created_at, updated_at)
        -- kind: button | zipper | interfacing | elastic | trim | other
+       --       (`interfacing` here is the pre-cut pack; roll/bolt interfacing is a fabric role)
 
 thread(id PK, name, brand, colour, colour_code, fibre, weight, spools,
        length_m, original_length_m, needle_size, location, source,
@@ -280,6 +287,10 @@ triggers:
 - `thread_fts(brand, name, colour, colour_code, fibre, notes)` — built at M2b.
 - `tool_fts(name, brand, category, spec, notes)` — built at M2b.
 
+**v2 (planned).** `notion_fts(name, colour, spec, location, notes)` and `project_fts(title, notes)`,
+so search covers all six record kinds — notions and projects are not indexed today
+([v2-plan §23](v2-plan.md)).
+
 `GET /api/search?q=` runs a ranked `BM25` `MATCH` and returns hits with the entity type, a
 title, the best snippet, and — for fabric — remaining `length_mm`. Free text is tokenised and
 each word is quoted as a prefix term (`"linen"*` joined by `AND`), so user punctuation can never
@@ -296,6 +307,11 @@ about what matched.
 ## 7. Photos and files
 
 Photos are **rows**, not files, so the whole record is one file to copy. **Built 2026-11-14.**
+
+**v2 (planned).** The table generalises from `fabric_photo` to
+`photo(entity_type, entity_id, …)`, so **every record** — fabric, thread, notions, tool, pattern and
+project — can carry a photo, with fabric and notions camera-first and the rest optional; the fabric
+routes stay as an alias. One migration copies the existing rows ([v2-plan §3](v2-plan.md)).
 
 - One image per request, sent as **raw bytes** with the image's own `Content-Type` (not
   multipart) — `POST /api/fabrics/:id/photos`. Accepted types are JPEG, PNG and WebP; the body
@@ -484,7 +500,7 @@ land at M5.
 | M7 | Ship | Dockerfile (multi-stage), compose, CI + GHCR publish workflows, deployment notes — **done** |
 | v2a | Pattern files + print | migration 8, owned PDF + thumbnail, `/api/locations`, QR labels, location screen, client-side tiled print — **done** |
 | v2b | Envelope scan | local Tesseract WASM in a Worker, envelope parser, review-before-save, view suggestions — **done** |
-| v2 | Beyond v1 | The rest: shopping list, tag hygiene, project photos, costing, imports — scoped in `v2-plan.md` |
+| v2 | Beyond v1 | The rest: shopping list, tag hygiene, photos on every record, costing, imports, the fabric role — scoped in `v2-plan.md` |
 
 Auth (M4) could land before M1's later parts; the plan keeps it early enough that nothing ships
 unauthenticated.
@@ -532,3 +548,10 @@ unauthenticated.
   result is a suggestion the person confirms. The engine is lazy-loaded; the CSP gains only
   `'wasm-unsafe-eval'`.
 - **Pattern source**: free-text, or a curated list of houses (Simplicity, McCall's, …)?
+- **Open, added 2026-11-15** (each debated in `v2-plan.md`): whether a fabric's totals are stored or
+  derived once cuts land (§15); the colour-swatch honesty caveat — a phone photo is not a
+  colour-managed value (§18); the SSRF guard, which is a requirement rather than a decision (§19);
+  and where a BYOK model key lives, given there is no encryption at rest (§20).
+- **Open, added 2026-11-16:** the fabric **role** vocabulary, and whether `RequirementRole` aligns to
+  it outright — one word ("interfacing") currently means a fabric and a counted notion at once
+  (`v2-plan.md` §22).

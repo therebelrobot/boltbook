@@ -96,8 +96,10 @@ Fabric and patterns are both first-class from day one, linked.
 
 ### In, v1 — notions, thread and tools
 
-- **Notions**: buttons, zippers, interfacing, elastic and trims — quantity, colour, spec and
-  location.
+- **Notions**: the counted things — buttons, zippers, elastic, trims and pre-cut packs — with
+  quantity, colour, spec and location. (Fusible **interfacing by the roll**, **lining** and
+  interlining are cloth, so they are fabrics with a **role**; the pattern requirement already calls
+  them that. See v2, §22.)
 - **Thread** as its own record, because a notion row cannot hold it: brand and line, colour with
   its code, fibre, weight, spools on hand, and metres remaining — like fabric, it is consumed.
 - **Tools**: cutting, measuring, pressing, machine, marking, needles and pins — brand, spec,
@@ -125,9 +127,21 @@ Fabric and patterns are both first-class from day one, linked.
 ### In, v2
 
 Scoped, costed and ordered in [`v2-plan.md`](v2-plan.md): shopping list from a shortfall, tag
-hygiene, photos on projects, costing, storing pattern PDFs, bin and box labels, tiled PDF
-printing, import from a Threadloop or Stash Hub export, merge import, and pattern capture from a
-photo. Remote access over a VPN is a documentation item; **sync is explicitly not v2**.
+hygiene, photos on every record (fabric and notions camera-first), costing, storing pattern PDFs,
+bin and box labels, tiled PDF printing, import from a Threadloop or Stash Hub export, merge import,
+and pattern capture from a photo. Remote access over a VPN is a documentation item; **sync is
+explicitly not v2**.
+
+Added 2026-11-15: a read-only detail screen; in-app crop and rotate; a repurchase link and an artist
+field on fabric; **cuts** (several lengths on one fabric, each with its own price and pre/post-wash
+length); colour swatches; a white-balance pass so the photos of one fabric agree; and pattern import
+from a URL, FreeSewing included. There is also an optional path that hands a page or a photo to a
+model the person runs or pays for, with their own key — off by default, outlined in §20, and
+deliberately **not** a headline feature.
+
+Added 2026-11-16: a **role** on fabric — a lining, a roll of fusible interfacing, interlining — so
+the cloth that is not the main cloth is cloth, not a counted notion; and a photo on **every** record,
+camera-first for fabric and notions.
 
 ### Out
 
@@ -138,7 +152,7 @@ photo. Remote access over a VPN is a documentation item; **sync is explicitly no
 | Multi-user, accounts, sharing, sync | One user, one box. |
 | A hosted or cloud version, native mobile apps | Browser only. |
 | Shopping or a marketplace | The opposite of the point. |
-| AI style or design suggestions | Not the problem being solved. |
+| AI style or design suggestions | Not the problem being solved. Reading a page or a photo into fields you could have typed is **extraction**; it exists only as an optional, off-by-default path (v2-plan §20), and advice stays out. |
 | Sewing instruction or technique | A different product (the sewing skill). |
 | Public social profiles, feeds, following | Private by default. |
 
