@@ -834,6 +834,54 @@ a.button {
   background: var(--surface);
 }
 
+/* ---------- shopping list ---------- */
+
+.shopping-list {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+.shopping-list h4 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.shopping-list ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+.shopping-list li {
+  margin: 0.2rem 0;
+}
+.shopping-print {
+  width: var(--paper-w);
+  box-sizing: border-box;
+  padding: 12mm;
+  background: #fff;
+  margin: 0 auto;
+}
+.shopping-print h3 {
+  margin: 0 0 0.75rem;
+  font-size: 14pt;
+}
+.shopping-print h4 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 9pt;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #777;
+}
+.shopping-print ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+.shopping-print li {
+  margin: 0.15rem 0;
+  font-size: 10pt;
+}
+
 /* ---------- labels and print ---------- */
 
 .print-overlay {
