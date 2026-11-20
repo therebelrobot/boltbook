@@ -66,7 +66,7 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
         {thumbFor(name)}
         <span className="body">
           <span className="title">{name}</span>
-          <span className="meta">{joinMeta([text(item.fibre), text(item.weight), text(item.colour), text(item.location)]) || 'No details yet'}</span>
+          <span className="meta">{joinMeta([text(item.fibre), text(item.weight), text(item.colour), text(item.artist), text(item.location)]) || 'No details yet'}</span>
           <TagLine item={item} />
           <Meter remaining={number(item.lengthMm)} original={number(item.originalLengthMm)} />
         </span>

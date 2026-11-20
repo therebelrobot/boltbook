@@ -159,9 +159,18 @@ export function StashDetailScreen({ kind, id }: StashDetailScreenProps) {
               <div className="detail-field" key={spec.name}>
                 <dt>{spec.label}</dt>
                 <dd>
-                  {typeof shown === 'boolean' ? 'Yes' : shown}
-                  {/* A stored measure reads with its unit, as everywhere else. */}
-                  {spec.unitKind && <span className="sub"> {unitLabel(spec.unitKind, unit)}</span>}
+                  {spec.name === 'repurchaseUrl' ? (
+                    // Stored http(s)-only; the server refused anything else at write.
+                    <a href={String(shown)} target="_blank" rel="noopener noreferrer">
+                      {String(shown).replace(/^https?:\/\//, '')}
+                    </a>
+                  ) : (
+                    <>
+                      {typeof shown === 'boolean' ? 'Yes' : shown}
+                      {/* A stored measure reads with its unit, as everywhere else. */}
+                      {spec.unitKind && <span className="sub"> {unitLabel(spec.unitKind, unit)}</span>}
+                    </>
+                  )}
                 </dd>
               </div>
             )
