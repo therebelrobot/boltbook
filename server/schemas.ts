@@ -161,3 +161,12 @@ export const totpConfirmRequestSchema = z.object({
 export const tagInputSchema = z.object({
   name: z.string().trim().min(1).max(60),
 })
+
+export const tagRenameSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+})
+
+export const tagMergeSchema = z.object({
+  /** The tag the links move onto. */
+  into: z.string().trim().min(1).max(64),
+})

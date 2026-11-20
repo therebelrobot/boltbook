@@ -26,7 +26,7 @@ async function toApiError(response: Response): Promise<ApiError> {
  */
 export async function api<T>(
   path: string,
-  options: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown } = {},
+  options: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown } = {},
 ): Promise<T> {
   const hasBody = options.body !== undefined
   const response = await fetch(path, {

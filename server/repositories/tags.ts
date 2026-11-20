@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import type { TaggableType, Tag } from '../../shared/model'
+import { RecordConflictError, RecordNotFoundError, RecordValidationError } from '../errors'
 
 type Row = Record<string, unknown>
 
@@ -42,6 +43,55 @@ export class TagsRepository {
 
   delete(id: string): void {
     this.database.prepare('DELETE FROM tag WHERE id = ?').run(id)
+  }
+
+  /**
+   * Rename in place: the links move with the id, so every tagged record follows.
+   * The vocabulary stays unique case-insensitively, so a name another tag
+   * already holds — `linen` vs `Linen` — is a conflict, not a silent clobber.
+   */
+  rename(id: string, name: string): Tag {
+    const trimmed = name.trim()
+    if (trimmed === '') throw new RecordValidationError('A tag needs a name.')
+    const row = this.database.prepare('SELECT id, name FROM tag WHERE id = ?').get(id) as Row | undefined
+    if (!row) throw new RecordNotFoundError(`No tag with id ${id}.`)
+    const clash = this.database
+      .prepare('SELECT id FROM tag WHERE name = ? COLLATE NOCASE AND id <> ?')
+      .get(trimmed, id) as Row | undefined
+    if (clash) throw new RecordConflictError(`A tag named "${trimmed}" already exists.`)
+    if (trimmed === String(row.name)) return { id, name: String(row.name), usageCount: this.#usage(id) }
+    this.database.prepare('UPDATE tag SET name = ? WHERE id = ?').run(trimmed, id)
+    return { id, name: trimmed, usageCount: this.#usage(id) }
+  }
+
+  /**
+   * Move every link onto another tag and remove the source. A record already
+   * carrying the target ignores the duplicate rather than failing — a merge
+   * that half-fails would be worse than a redundant link row, which cannot
+   * exist anyway (the primary key sees to it).
+   */
+  merge(sourceId: string, targetId: string): Tag {
+    if (sourceId === targetId) throw new RecordValidationError('A tag cannot be merged into itself.')
+    const target = this.database.prepare('SELECT id, name FROM tag WHERE id = ?').get(targetId) as Row | undefined
+    if (!target) throw new RecordNotFoundError(`No tag with id ${targetId}.`)
+    const source = this.database.prepare('SELECT id FROM tag WHERE id = ?').get(sourceId) as Row | undefined
+    if (!source) throw new RecordNotFoundError(`No tag with id ${sourceId}.`)
+    this.database.exec('BEGIN')
+    try {
+      this.database
+        .prepare(
+          `INSERT OR IGNORE INTO tag_link (tag_id, entity_type, entity_id)
+             SELECT ?, entity_type, entity_id FROM tag_link WHERE tag_id = ?`,
+        )
+        .run(targetId, sourceId)
+      this.database.prepare('DELETE FROM tag_link WHERE tag_id = ?').run(sourceId)
+      this.database.prepare('DELETE FROM tag WHERE id = ?').run(sourceId)
+      this.database.exec('COMMIT')
+    } catch (error) {
+      this.database.exec('ROLLBACK')
+      throw error
+    }
+    return { id: String(target.id), name: String(target.name), usageCount: this.#usage(targetId) }
   }
 
   #usage(tagId: string): number {
