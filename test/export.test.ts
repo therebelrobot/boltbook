@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { inflateRawSync } from 'node:zlib'
-import { anonymousApp, freshApp, json, readJson } from './helpers'
+import { anonymousApp, fabricWithCut, freshApp, json, readJson } from './helpers'
 
 /**
  * A small reader for the zip we write — enough to prove the archive is real and
@@ -160,13 +160,17 @@ test('exporting needs a session', async () => {
 
 test('the records come back in a JSON export that matches the database', async () => {
   const app = await freshApp()
-  const fabric = await readJson<{ id: string; name: string }>(await app.request('/api/fabrics', json({ name: 'Wool', lengthMm: 1600 })))
+  const fabric = await fabricWithCut(app, { name: 'Wool' }, { lengthMm: 1600 })
   const zip = await exportZip(app)
   const document = JSON.parse((readEntry(zip, 'boltbook.json') ?? Buffer.alloc(0)).toString('utf8')) as {
-    tables: { fabric: Array<Record<string, unknown>> }
+    tables: { fabric: Array<Record<string, unknown>>; fabric_cut: Array<Record<string, unknown>> }
   }
   const exported = document.tables.fabric.find((row) => row.id === fabric.id)
   assert.ok(exported)
   assert.equal(exported.name, 'Wool')
-  assert.equal(exported.length_mm, 1600)
+  // The fabric no longer carries a length; the cut does.
+  assert.equal('length_mm' in exported, false)
+  const cut = document.tables.fabric_cut.find((row) => row.fabric_id === fabric.id)
+  assert.ok(cut)
+  assert.equal(cut.length_mm, 1600)
 })

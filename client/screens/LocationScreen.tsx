@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { navigate } from '../router'
 import { api, photoUrl } from '../api'
-import { formatQuantity, joinMeta } from '../format'
+import { fabricRemaining, formatQuantity, joinMeta } from '../format'
 import { formatStored } from '../units'
 import { useUnit } from '../unitPreference'
 import type { Fabric, Notion, Thread, Tool } from '../../shared/model'
@@ -110,7 +110,7 @@ export function LocationScreen({ name }: LocationScreenProps) {
                   </span>
                 </span>
                 <span className="right">
-                  {formatStored(fabric.lengthMm, 'fabricLength', unit)}
+                  {formatStored(fabricRemaining(fabric), 'fabricLength', unit)}
                   <span className="sub">left</span>
                 </span>
               </button>

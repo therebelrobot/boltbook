@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, photoUrl, uploadPhoto } from '../api'
+import { CutsEditor } from '../components/CutsEditor'
 import { EntitySheet } from '../components/EntitySheet'
 import { PhotoField } from '../components/PhotoField'
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
 import { preparePhoto } from '../photo'
-import { remainingFraction } from '../format'
+import { fabricOriginal, fabricRemaining, remainingFraction } from '../format'
 import { unitLabel } from '../units'
 import { useUnit } from '../unitPreference'
 import { STASH_KINDS, type StashKindConfig } from '../fields'
 import { displayField } from '../formValues'
-import type { Photo } from '../../shared/model'
+import type { FabricCut, Photo } from '../../shared/model'
 
 type Record_ = Record<string, unknown>
 
@@ -89,14 +90,28 @@ export function StashDetailScreen({ kind, id }: StashDetailScreenProps) {
       // Dropping the server-owned fields, so an undo re-creates rather than conflicts.
       const storable: Record_ = {}
       for (const [key, value] of Object.entries(snapshot)) {
-        if (key === 'id' || key === 'photos' || key === 'createdAt' || key === 'updatedAt') continue
+        if (key === 'id' || key === 'photos' || key === 'cuts' || key === 'createdAt' || key === 'updatedAt') continue
         storable[key] = value
       }
       toast({
         message: `${config.singular} deleted.`,
         actionLabel: 'Undo',
         onAction: async () => {
-          await api(config.path, { method: 'POST', body: storable })
+          const created = await api<{ id: string }>(config.path, { method: 'POST', body: storable })
+          // A fabric's lengths live on its cuts; put the pieces back too.
+          const cuts = (snapshot.cuts as Array<Record<string, unknown>> | undefined) ?? []
+          for (const cut of cuts) {
+            await api(`${config.path}/${created.id}/cuts`, {
+              method: 'POST',
+              body: {
+                lengthMm: cut.lengthMm ?? null,
+                originalLengthMm: cut.originalLengthMm ?? null,
+                costMinor: cut.costMinor ?? null,
+                currency: cut.currency ?? null,
+                acquiredOn: cut.acquiredOn ?? null,
+              },
+            })
+          }
         },
       })
     }
@@ -125,7 +140,8 @@ export function StashDetailScreen({ kind, id }: StashDetailScreenProps) {
   const photos = (record.photos as Photo[] | undefined) ?? []
   const tags = Array.isArray(record.tags) ? (record.tags as string[]) : []
   const name = String(record.name ?? record.title ?? '')
-  const fraction = kind === 'fabric' ? remainingFraction(Number(record.lengthMm), Number(record.originalLengthMm)) : null
+  const cuts = (record.cuts as Array<{ lengthMm: number | null; originalLengthMm: number | null }> | undefined) ?? []
+  const fraction = kind === 'fabric' ? remainingFraction(fabricRemaining({ cuts }), fabricOriginal({ cuts })) : null
 
   return (
     <>
@@ -176,6 +192,8 @@ export function StashDetailScreen({ kind, id }: StashDetailScreenProps) {
             )
           })}
       </dl>
+
+      {kind === 'fabric' && <CutsEditor fabricId={id} cuts={(record.cuts as FabricCut[] | undefined) ?? []} onChanged={() => void reload()} />}
 
       {kind === 'fabric' && fraction !== null && (
         <div className="meter" role="img" aria-label={`${Math.round(fraction * 100)}% remaining`}>

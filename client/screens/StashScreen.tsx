@@ -6,7 +6,7 @@ import { PhotoField } from '../components/PhotoField'
 import { useToast } from '../components/Toast'
 import { navigate, useRoute } from '../router'
 import { preparePhoto } from '../photo'
-import { formatQuantity, joinMeta, remainingFraction } from '../format'
+import { fabricOriginal, fabricRemaining, formatQuantity, joinMeta, remainingFraction } from '../format'
 import { formatStored } from '../units'
 import type { LengthUnit } from '../units'
 import { useUnit } from '../unitPreference'
@@ -61,6 +61,10 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
   const thumbFor = (fallback: string) => <RowThumb photo={photos[0]} label={fallback} />
 
   if (kind === 'fabric') {
+    // The totals are derived: the sum of the cuts, never a stored second truth.
+    const cuts = (item.cuts as Array<{ lengthMm: number | null; originalLengthMm: number | null }> | undefined) ?? []
+    const remaining = fabricRemaining({ cuts })
+    const original = fabricOriginal({ cuts })
     return (
       <button type="button" className="row" onClick={onOpen}>
         {thumbFor(name)}
@@ -68,10 +72,10 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
           <span className="title">{name}</span>
           <span className="meta">{joinMeta([text(item.fibre), text(item.weight), text(item.colour), text(item.artist), text(item.location)]) || 'No details yet'}</span>
           <TagLine item={item} />
-          <Meter remaining={number(item.lengthMm)} original={number(item.originalLengthMm)} />
+          <Meter remaining={remaining} original={original} />
         </span>
         <span className="right">
-          {formatStored(number(item.lengthMm), 'fabricLength', unit)}
+          {formatStored(remaining, 'fabricLength', unit)}
           <span className="sub">left</span>
         </span>
       </button>
@@ -124,7 +128,7 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
 function storable(record: Record_): Record_ {
   const copy: Record_ = {}
   for (const [key, value] of Object.entries(record)) {
-    if (key === 'id' || key === 'photos' || key === 'createdAt' || key === 'updatedAt') continue
+    if (key === 'id' || key === 'photos' || key === 'cuts' || key === 'createdAt' || key === 'updatedAt') continue
     copy[key] = value
   }
   return copy
@@ -219,7 +223,23 @@ export function StashScreen() {
         message: `${config.singular} deleted.`,
         actionLabel: 'Undo',
         onAction: async () => {
-          await api(config.path, { method: 'POST', body: storable(snapshot) })
+          const created = await api<{ id: string }>(config.path, { method: 'POST', body: storable(snapshot) })
+          // A fabric's lengths live on its cuts; put the pieces back too.
+          if (kind === 'fabric') {
+            const cuts = (snapshot.cuts as Array<Record<string, unknown>> | undefined) ?? []
+            for (const cut of cuts) {
+              await api(`${config.path}/${created.id}/cuts`, {
+                method: 'POST',
+                body: {
+                  lengthMm: cut.lengthMm ?? null,
+                  originalLengthMm: cut.originalLengthMm ?? null,
+                  costMinor: cut.costMinor ?? null,
+                  currency: cut.currency ?? null,
+                  acquiredOn: cut.acquiredOn ?? null,
+                },
+              })
+            }
+          }
           await reload()
         },
       })

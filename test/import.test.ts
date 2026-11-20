@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { anonymousApp, freshApp, json, readJson, type Client } from './helpers'
+import { anonymousApp, fabricWithCut, freshApp, json, put, readJson, type Client } from './helpers'
+import { createZip, readZip } from '../server/zip'
 
 const PIXELS = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 8, 7])
 const PDF_BYTES = Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n')
@@ -26,8 +27,10 @@ async function seedSource(): Promise<{
   patternFileId: string
 }> {
   const app = await freshApp()
-  const fabric = await readJson<{ id: string }>(
-    await app.request('/api/fabrics', json({ name: 'Washed linen', fibre: 'linen', lengthMm: 2500, widthMm: 1400, tags: ['linen', 'summer'] })),
+  const fabric = await fabricWithCut(
+    app,
+    { name: 'Washed linen', fibre: 'linen', widthMm: 1400, tags: ['linen', 'summer'] },
+    { lengthMm: 2500 },
   )
   const photo = await readJson<{ id: string }>(
     await app.request(`/api/fabrics/${fabric.id}/photos`, {
@@ -55,7 +58,7 @@ async function seedSource(): Promise<{
   await app.request(`/api/projects/${project.id}/allocations`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ fabrics: [{ fabricId: fabric.id, lengthMmUsed: 2800 }] }),
+    body: JSON.stringify({ fabrics: [{ cutId: fabric.cutId, lengthMmUsed: 2800 }] }),
   })
   return {
     app,
@@ -78,16 +81,18 @@ test('a restore reproduces the records, the tags, the views and the photo bytes'
   assert.equal(result.photos, 1)
   assert.equal(result.patternFiles, 1)
   assert.equal(result.imported.fabric, 1)
+  assert.equal(result.imported.fabric_cut, 1)
+  assert.equal(result.imported.project_cut, 1)
   assert.equal(result.imported.pattern_file, 1)
   assert.equal(result.imported.tag, 3)
   assert.equal(result.imported.tag_link, 4)
 
-  const fabrics = await readJson<Array<{ name: string; lengthMm: number; tags: string[]; photos: Array<{ id: string }> }>>(
-    await target.request('/api/fabrics'),
-  )
+  const fabrics = await readJson<
+    Array<{ name: string; cuts: Array<{ lengthMm: number | null }>; tags: string[]; photos: Array<{ id: string }> }>
+  >(await target.request('/api/fabrics'))
   assert.equal(fabrics.length, 1)
   assert.equal(fabrics[0]!.name, 'Washed linen')
-  assert.equal(fabrics[0]!.lengthMm, 2500)
+  assert.equal(fabrics[0]!.cuts[0]!.lengthMm, 2500)
   assert.deepEqual(fabrics[0]!.tags, ['linen', 'summer'])
   assert.equal(fabrics[0]!.photos[0]!.id, source.photoId)
 
@@ -198,4 +203,50 @@ test('a round trip through export and import is stable', async () => {
   const sourceNames = (await readJson<Array<{ name: string }>>(await source.app.request('/api/fabrics'))).map((f) => f.name)
   const thirdNames = (await readJson<Array<{ name: string }>>(await third.request('/api/fabrics'))).map((f) => f.name)
   assert.deepEqual(thirdNames, sourceNames)
+})
+
+test('an export from before the cuts migration still restores, lengths and all', async () => {
+  const source = await seedSource()
+  const entries = readZip(source.zip)
+  const manifest = JSON.parse(entries.get('boltbook.json')!.toString('utf8')) as {
+    tables: Record<string, Array<Record<string, unknown>>>
+  }
+
+  // Wind the JSON back: the fabric regains its length columns, the cut table
+  // disappears, and the allocations become project_fabric rows again.
+  const cut = manifest.tables.fabric_cut![0]!
+  const fabric = manifest.tables.fabric!.find((row) => row.id === cut.fabric_id)!
+  const legacyFabric: Record<string, unknown> = { ...fabric, length_mm: cut.length_mm, original_length_mm: cut.original_length_mm, cost_minor: cut.cost_minor, currency: cut.currency, acquired_on: cut.acquired_on }
+  const legacyAllocations = manifest.tables.project_cut!.map(({ cut_id: _cut, ...row }) => ({
+    ...row,
+    fabric_id: cut.fabric_id,
+  }))
+  const tables: Record<string, Array<Record<string, unknown>>> = {
+    ...manifest.tables,
+    fabric: [legacyFabric],
+    project_fabric: legacyAllocations,
+  }
+  delete tables.fabric_cut
+  delete tables.project_cut
+  const rewritten = createZip(
+    [
+      { name: 'boltbook.json', data: Buffer.from(JSON.stringify({ ...manifest, tables }, null, 2), 'utf8') },
+      ...[...entries.keys()].filter((name) => name !== 'boltbook.json').map((name) => ({ name, data: entries.get(name)! })),
+    ],
+    new Date(),
+  )
+
+  const target = await freshApp()
+  const response = await restore(target, rewritten)
+  assert.equal(response.status, 200)
+
+  const fabrics = await readJson<Array<{ cuts: Array<{ lengthMm: number | null }> }>>(await target.request('/api/fabrics'))
+  assert.equal(fabrics[0]!.cuts[0]!.lengthMm, 2500)
+  // And the allocation survived the mapping onto the synthesized cut.
+  const projects = await readJson<Array<{ allocations: { fabrics: Array<{ cutId: string; lengthMmUsed: number | null }> } }>>(
+    await target.request('/api/projects'),
+  )
+  assert.equal(projects[0]!.allocations.fabrics[0]!.lengthMmUsed, 2800)
+  const photoBack = await target.request(`/api/photos/fabric/${legacyFabric.id}/${source.photoId}`)
+  assert.equal(photoBack.status, 200)
 })

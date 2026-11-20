@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { freshApp, json, readJson, type Client } from './helpers'
+import { fabricWithCut, freshApp, json, readJson, type Client } from './helpers'
 import type { ShortfallLine } from '../shared/model'
 
 interface Project {
@@ -9,16 +9,15 @@ interface Project {
   status: string
   consumed: boolean
   allocations: {
-    fabrics: Array<{ fabricId: string; lengthMmUsed: number | null }>
+    fabrics: Array<{ cutId: string; lengthMmUsed: number | null }>
     threads: Array<{ threadId: string; lengthMUsed: number | null }>
     notions: Array<{ notionId: string; quantityUsed: number | null }>
   }
 }
 
-async function makeFabric(app: Client, body: Record<string, unknown> = {}) {
-  return readJson<{ id: string; lengthMm: number | null }>(
-    await app.request('/api/fabrics', json({ name: 'Linen', lengthMm: 2000, widthMm: 1500, ...body })),
-  )
+async function makeFabric(app: Client, body: Record<string, unknown> = {}, cut: Record<string, unknown> = {}) {
+  const width = body.widthMm === undefined ? { widthMm: 1500 } : {}
+  return fabricWithCut(app, { name: 'Linen', ...width, ...body }, { lengthMm: 2000, ...cut })
 }
 
 async function makeProject(app: Client, body: Record<string, unknown> = {}) {
@@ -62,7 +61,7 @@ test('allocations attach fabric, thread and notions', async () => {
   const allocated = await app.request(
     `/api/projects/${project.id}/allocations`,
     allocationsBody({
-      fabrics: [{ fabricId: fabric.id, lengthMmUsed: 1500 }],
+      fabrics: [{ cutId: fabric.cutId, lengthMmUsed: 1500 }],
       threads: [{ threadId: thread.id, lengthMUsed: 30 }],
       notions: [{ notionId: notion.id, quantityUsed: 4 }],
     }),
@@ -79,7 +78,7 @@ test('allocating something that does not exist is refused', async () => {
   const project = await makeProject(app)
   const response = await app.request(
     `/api/projects/${project.id}/allocations`,
-    allocationsBody({ fabrics: [{ fabricId: 'ghost', lengthMmUsed: 100 }] }),
+    allocationsBody({ fabrics: [{ cutId: 'ghost', lengthMmUsed: 100 }] }),
   )
   assert.equal(response.status, 400)
 })
@@ -88,7 +87,7 @@ test('shortfall is zero when the stash covers the plan', async () => {
   const app = await freshApp()
   const fabric = await makeFabric(app, { lengthMm: 3000 })
   const project = await makeProject(app)
-  await app.request(`/api/projects/${project.id}/allocations`, allocationsBody({ fabrics: [{ fabricId: fabric.id, lengthMmUsed: 2000 }] }))
+  await app.request(`/api/projects/${project.id}/allocations`, allocationsBody({ fabrics: [{ cutId: fabric.cutId, lengthMmUsed: 2000 }] }))
 
   const { lines } = await shortfallOf(app, project.id)
   assert.equal(lines.length, 1)
@@ -111,7 +110,7 @@ test('another active project reserves what the first cannot double-count', async
   const first = await makeProject(app, { title: 'First' })
   const second = await makeProject(app, { title: 'Second' })
 
-  const body = allocationsBody({ fabrics: [{ fabricId: fabric.id, lengthMmUsed: 1500 }] })
+  const body = allocationsBody({ fabrics: [{ cutId: fabric.cutId, lengthMmUsed: 1500 }] })
   await app.request(`/api/projects/${first.id}/allocations`, body)
   await app.request(`/api/projects/${second.id}/allocations`, body)
 
@@ -128,7 +127,7 @@ test('a fabric narrower than the pattern asks for warns without a shortfall', as
   await app.request(`/api/patterns/${pattern.id}/views/${view.id}/requirements`, json({ role: 'main', lengthMm: 2000, fabricWidthMm: 1400 }))
 
   const project = await makeProject(app, { patternViewId: view.id })
-  await app.request(`/api/projects/${project.id}/allocations`, allocationsBody({ fabrics: [{ fabricId: fabric.id, lengthMmUsed: 2000 }] }))
+  await app.request(`/api/projects/${project.id}/allocations`, allocationsBody({ fabrics: [{ cutId: fabric.cutId, lengthMmUsed: 2000 }] }))
 
   const { lines } = await shortfallOf(app, project.id)
   assert.equal(lines[0]!.tooNarrow, true)
@@ -139,7 +138,7 @@ test('reaching done consumes the stash and stops reserving', async () => {
   const app = await freshApp()
   const fabric = await makeFabric(app, { lengthMm: 2000 })
   const project = await makeProject(app)
-  await app.request(`/api/projects/${project.id}/allocations`, allocationsBody({ fabrics: [{ fabricId: fabric.id, lengthMmUsed: 1500 }] }))
+  await app.request(`/api/projects/${project.id}/allocations`, allocationsBody({ fabrics: [{ cutId: fabric.cutId, lengthMmUsed: 1500 }] }))
 
   const finished = await app.request(`/api/projects/${project.id}`, {
     method: 'PUT',
@@ -148,11 +147,11 @@ test('reaching done consumes the stash and stops reserving', async () => {
   })
   assert.equal((await readJson<Project>(finished)).consumed, true)
 
-  const fabricAfter = await readJson<{ lengthMm: number }>(await app.request(`/api/fabrics/${fabric.id}`))
-  assert.equal(fabricAfter.lengthMm, 500)
+  const fabricAfter = await readJson<{ cuts: Array<{ lengthMm: number | null }> }>(await app.request(`/api/fabrics/${fabric.id}`))
+  assert.equal(fabricAfter.cuts[0]!.lengthMm, 500)
 
   const next = await makeProject(app, { title: 'Next' })
-  await app.request(`/api/projects/${next.id}/allocations`, allocationsBody({ fabrics: [{ fabricId: fabric.id, lengthMmUsed: 1000 }] }))
+  await app.request(`/api/projects/${next.id}/allocations`, allocationsBody({ fabrics: [{ cutId: fabric.cutId, lengthMmUsed: 1000 }] }))
   const { lines } = await shortfallOf(app, next.id)
   assert.equal(lines[0]!.available, 500)
   assert.equal(lines[0]!.short, 500)
@@ -162,7 +161,7 @@ test('deleting a project removes its allocations', async () => {
   const app = await freshApp()
   const fabric = await makeFabric(app)
   const project = await makeProject(app)
-  await app.request(`/api/projects/${project.id}/allocations`, allocationsBody({ fabrics: [{ fabricId: fabric.id, lengthMmUsed: 1000 }] }))
+  await app.request(`/api/projects/${project.id}/allocations`, allocationsBody({ fabrics: [{ cutId: fabric.cutId, lengthMmUsed: 1000 }] }))
   assert.equal((await app.request(`/api/projects/${project.id}`, { method: 'DELETE' })).status, 200)
   assert.equal((await app.request(`/api/projects/${project.id}`)).status, 404)
   assert.equal((await app.request(`/api/projects/${project.id}/shortfall`)).status, 404)

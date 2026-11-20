@@ -89,3 +89,22 @@ export const put = (body: unknown): RequestInit => ({
 export async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T
 }
+
+/**
+ * A fabric with one cut carrying the given piece values — the common shape.
+ * Every fabric is born with one empty cut (the piece is measured later), so
+ * the cut id is there as soon as the fabric exists.
+ */
+export async function fabricWithCut(
+  app: Client,
+  body: Record<string, unknown>,
+  cut: Record<string, unknown> = {},
+): Promise<{ id: string; cutId: string; lengthMm: number | null; originalLengthMm: number | null }> {
+  const fabric = await readJson<{ id: string; cuts: Array<{ id: string }> }>(await app.request('/api/fabrics', json(body)))
+  const cutId = fabric.cuts[0]!.id
+  if (Object.keys(cut).length === 0) return { id: fabric.id, cutId, lengthMm: null, originalLengthMm: null }
+  const updated = await readJson<{ lengthMm: number | null; originalLengthMm: number | null }>(
+    await app.request(`/api/fabrics/${fabric.id}/cuts/${cutId}`, put(cut)),
+  )
+  return { id: fabric.id, cutId, lengthMm: updated.lengthMm, originalLengthMm: updated.originalLengthMm }
+}

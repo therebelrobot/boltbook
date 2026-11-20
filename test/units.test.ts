@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  FABRIC_CUT_MEASURES,
   FABRIC_MEASURES,
   fromImperial,
   normalizeMeasures,
@@ -32,27 +33,34 @@ test('thread converts metres to yards', () => {
 })
 
 test('an imperial write is normalised to canonical metric', () => {
-  const normalised = normalizeMeasures({ name: 'Linen', lengthYd: 2.73, widthIn: 44 }, FABRIC_MEASURES)
-  assert.equal(normalised.lengthMm, 2496)
+  // Lengths live on the cut now; the fabric row itself only carries the width.
+  const normalised = normalizeMeasures({ name: 'Linen', widthIn: 44 }, FABRIC_MEASURES)
   assert.equal(normalised.widthMm, 1118)
-  assert.equal('lengthYd' in normalised, false)
+  assert.equal('widthIn' in normalised, false)
+
+  const cutNormalised = normalizeMeasures({ lengthYd: 2.73 }, FABRIC_CUT_MEASURES)
+  assert.equal(cutNormalised.lengthMm, 2496)
+  assert.equal('lengthYd' in cutNormalised, false)
 })
 
 test('giving both names for one measure is refused', () => {
-  assert.throws(() => normalizeMeasures({ lengthMm: 2000, lengthYd: 2 }, FABRIC_MEASURES))
+  assert.throws(() => normalizeMeasures({ lengthMm: 2000, lengthYd: 2 }, FABRIC_CUT_MEASURES))
+  assert.throws(() => normalizeMeasures({ widthMm: 1400, widthIn: 55 }, FABRIC_MEASURES))
 })
 
 test('a metric record passes through untouched', () => {
-  const fabric = { name: 'Linen', lengthMm: 2500 }
+  const fabric = { name: 'Linen', widthMm: 1400 }
   assert.deepEqual(presentMeasures(fabric, FABRIC_MEASURES, 'metric'), fabric)
 })
 
 test('an imperial response renames the measure fields', () => {
-  const presented = presentMeasures({ name: 'Linen', lengthMm: 2500, widthMm: 1400 }, FABRIC_MEASURES, 'imperial') as Record<string, unknown>
-  assert.equal(presented.lengthYd, 2.73)
+  const presented = presentMeasures({ name: 'Linen', widthMm: 1400 }, FABRIC_MEASURES, 'imperial') as Record<string, unknown>
   assert.equal(presented.widthIn, 55.12)
-  assert.equal('lengthMm' in presented, false)
   assert.equal('widthMm' in presented, false)
+
+  const cutPresented = presentMeasures({ lengthMm: 2500 }, FABRIC_CUT_MEASURES, 'imperial') as Record<string, unknown>
+  assert.equal(cutPresented.lengthYd, 2.73)
+  assert.equal('lengthMm' in cutPresented, false)
 })
 
 test('shortfall lines carry their unit when imperial', () => {

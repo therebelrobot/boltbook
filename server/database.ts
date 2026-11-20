@@ -19,6 +19,12 @@ import { DatabaseSync } from 'node:sqlite'
  *     means rebuilding `fabric_fts` — external-content FTS5 cannot be altered
  *     in place, so the triggers are rewritten and the index repopulated.
  *     `repurchase_url` stays out of the index: it is a link, not a question.
+ * 12 — cuts: a fabric is the cloth and holds one or more `fabric_cut` rows,
+ *     each with its own length, remaining length, price and acquisition date.
+ *     The fabric's totals become derived (a SUM over cuts), and a project
+ *     names the cut it took: `project_fabric` becomes `project_cut`. The
+ *     backfill gives every existing fabric exactly one cut carrying the values
+ *     its row held, and every existing allocation points at that cut.
  */
 /** Exported for the migration tests: they build an older schema and step it forward. */
 export const MIGRATIONS: string[] = [
@@ -416,6 +422,51 @@ export const MIGRATIONS: string[] = [
     END;
     INSERT INTO fabric_fts(rowid, name, fibre, colour, print_type, location, notes, artist)
       SELECT rowid, name, fibre, colour, print_type, location, notes, artist FROM fabric;`,
+
+   // Cuts. The fabric is the cloth; the cut is the physical piece. One backfill
+   // cut per fabric carries the values the fabric row held — a stash that never
+   // split a bolt reads exactly as it did. `project_cut` replaces
+   // `project_fabric`: a project now names the cut it took, and every existing
+   // allocation points at the one cut its fabric got in the backfill. The
+   // fabric's own length/price columns are dropped rather than kept as a
+   // second truth — every total is a SUM over cuts from here on.
+   `CREATE TABLE fabric_cut (
+      id                 TEXT PRIMARY KEY,
+      fabric_id          TEXT NOT NULL REFERENCES fabric(id) ON DELETE CASCADE,
+      position           INTEGER NOT NULL,
+      length_mm          INTEGER,
+      original_length_mm INTEGER,
+      cost_minor         INTEGER,
+      currency           TEXT,
+      acquired_on        TEXT,
+      created_at         TEXT NOT NULL,
+      updated_at         TEXT NOT NULL
+    );
+    CREATE INDEX fabric_cut_fabric_idx ON fabric_cut(fabric_id, position);
+
+    INSERT INTO fabric_cut (id, fabric_id, position, length_mm, original_length_mm,
+                            cost_minor, currency, acquired_on, created_at, updated_at)
+      SELECT lower(hex(randomblob(16))), id, 0, length_mm, original_length_mm,
+             cost_minor, currency, acquired_on, created_at, updated_at
+        FROM fabric;
+
+    CREATE TABLE project_cut (
+      project_id     TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+      cut_id         TEXT NOT NULL REFERENCES fabric_cut(id) ON DELETE CASCADE,
+      length_mm_used INTEGER,
+      PRIMARY KEY (project_id, cut_id)
+    );
+    INSERT INTO project_cut (project_id, cut_id, length_mm_used)
+      SELECT pf.project_id, fc.id, pf.length_mm_used
+        FROM project_fabric pf
+        JOIN fabric_cut fc ON fc.fabric_id = pf.fabric_id;
+    DROP TABLE project_fabric;
+
+    ALTER TABLE fabric DROP COLUMN length_mm;
+    ALTER TABLE fabric DROP COLUMN original_length_mm;
+    ALTER TABLE fabric DROP COLUMN cost_minor;
+    ALTER TABLE fabric DROP COLUMN currency;
+    ALTER TABLE fabric DROP COLUMN acquired_on;`,
 ]
 
 export type Database = DatabaseSync

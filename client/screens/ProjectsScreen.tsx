@@ -6,7 +6,7 @@ import { PhotoField } from '../components/PhotoField'
 import { PrintOverlay } from '../components/PrintOverlay'
 import { useToast } from '../components/Toast'
 import { PROJECT_FIELDS } from '../fields'
-import { formatQuantity, joinMeta } from '../format'
+import { fabricRemaining, formatQuantity, joinMeta } from '../format'
 import { formatStored } from '../units'
 import type { LengthUnit } from '../units'
 import { useUnit } from '../unitPreference'
@@ -29,6 +29,12 @@ const PATHS = '/api/projects'
 
 const statusLabel = (status: string): string => status.charAt(0).toUpperCase() + status.slice(1)
 
+/** A cut is named by its cloth, and — when the cloth has more than one piece — by which piece it is. */
+function cutLabel(fabric: Fabric, cut: Fabric['cuts'][number]): string {
+  const suffix = fabric.cuts.length > 1 ? ` — cut ${cut.position + 1}` : ''
+  return `${fabric.name}${suffix}`
+}
+
 function nameFor(
   line: ShortfallLine,
   fabrics: Fabric[],
@@ -37,8 +43,11 @@ function nameFor(
   unit: LengthUnit,
 ): string {
   if (line.kind === 'fabric') {
-    const fabric = fabrics.find((entry) => entry.id === line.targetId)
-    return fabric ? `${fabric.name} (${formatStored(fabric.lengthMm, 'fabricLength', unit)} left)` : 'Unknown fabric'
+    for (const fabric of fabrics) {
+      const cut = fabric.cuts.find((entry) => entry.id === line.targetId)
+      if (cut) return `${cutLabel(fabric, cut)} (${formatStored(cut.lengthMm, 'fabricLength', unit)} left)`
+    }
+    return 'Unknown fabric'
   }
   if (line.kind === 'thread') {
     const thread = threads.find((entry) => entry.id === line.targetId)
@@ -114,7 +123,7 @@ function AllocationEditor({ project, onChanged }: { project: Project; onChanged:
       threads: [...allocations.threads],
       notions: [...allocations.notions],
     }
-    if (kind === 'fabrics') next.fabrics.push({ fabricId: id, lengthMmUsed: toNumberOrNull(raw) })
+    if (kind === 'fabrics') next.fabrics.push({ cutId: id, lengthMmUsed: toNumberOrNull(raw) })
     if (kind === 'threads') next.threads.push({ threadId: id, lengthMUsed: toNumberOrNull(raw) })
     if (kind === 'notions') next.notions.push({ notionId: id, quantityUsed: toNumberOrNull(raw) })
     void apply(next)
@@ -130,7 +139,7 @@ function AllocationEditor({ project, onChanged }: { project: Project; onChanged:
   }
 
   const rows = [
-    ...allocations.fabrics.map((entry, index) => ({ kind: 'fabrics' as const, index, line: lines.find((line) => line.kind === 'fabric' && line.targetId === entry.fabricId), label: nameFor({ kind: 'fabric', targetId: entry.fabricId, needed: entry.lengthMmUsed, available: 0, short: 0, tooNarrow: false }, fabrics.items ?? [], threads.items ?? [], notions.items ?? [], unit) })),
+    ...allocations.fabrics.map((entry, index) => ({ kind: 'fabrics' as const, index, line: lines.find((line) => line.kind === 'fabric' && line.targetId === entry.cutId), label: nameFor({ kind: 'fabric', targetId: entry.cutId, needed: entry.lengthMmUsed, available: 0, short: 0, tooNarrow: false }, fabrics.items ?? [], threads.items ?? [], notions.items ?? [], unit) })),
     ...allocations.threads.map((entry, index) => ({ kind: 'threads' as const, index, line: lines.find((line) => line.kind === 'thread' && line.targetId === entry.threadId), label: nameFor({ kind: 'thread', targetId: entry.threadId, needed: entry.lengthMUsed, available: 0, short: 0, tooNarrow: false }, fabrics.items ?? [], threads.items ?? [], notions.items ?? [], unit) })),
     ...allocations.notions.map((entry, index) => ({ kind: 'notions' as const, index, line: lines.find((line) => line.kind === 'notion' && line.targetId === entry.notionId), label: nameFor({ kind: 'notion', targetId: entry.notionId, needed: entry.quantityUsed, available: 0, short: 0, tooNarrow: false }, fabrics.items ?? [], threads.items ?? [], notions.items ?? [], unit) })),
   ]
@@ -164,13 +173,16 @@ function AllocationEditor({ project, onChanged }: { project: Project; onChanged:
 
       <div className="field">
         <span className="label">Add fabric</span>
+        {/* A project takes a named cut — the piece the person physically cut. */}
         <select value={choice.fabric} onChange={(event) => setChoice((current) => ({ ...current, fabric: event.target.value }))}>
           <option value="">—</option>
-          {(fabrics.items ?? []).map((fabric) => (
-            <option key={fabric.id} value={fabric.id}>
-              {fabric.name} ({formatStored(fabric.lengthMm, 'fabricLength', unit)})
-            </option>
-          ))}
+          {(fabrics.items ?? []).flatMap((fabric) =>
+            fabric.cuts.map((cut) => (
+              <option key={cut.id} value={cut.id}>
+                {cutLabel(fabric, cut)} ({formatStored(cut.lengthMm, 'fabricLength', unit)} left)
+              </option>
+            )),
+          )}
         </select>
         <input
           inputMode="numeric"

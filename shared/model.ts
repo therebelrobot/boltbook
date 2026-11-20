@@ -33,6 +33,35 @@ export interface Photo {
   createdAt: string
 }
 
+/**
+ * A physical piece of a fabric: the 3 m bolt, or the 2 m remnant of the same
+ * linen. The fabric is the cloth — fibre, colour, print, width, care — and the
+ * cut is what has a length, a price and an acquisition date. A cut cannot move
+ * to another fabric: it is a piece of the cloth it was cut from.
+ */
+export interface FabricCut {
+  id: string
+  fabricId: string
+  position: number
+  /** Remaining length, post-purchase as measured. */
+  lengthMm: number | null
+  /** What was bought, as the receipt says. */
+  originalLengthMm: number | null
+  costMinor: number | null
+  currency: string | null
+  acquiredOn: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FabricCutInput {
+  lengthMm: number | null
+  originalLengthMm: number | null
+  costMinor: number | null
+  currency: string | null
+  acquiredOn: string | null
+}
+
 export interface Fabric {
   id: string
   name: string
@@ -41,12 +70,7 @@ export interface Fabric {
   colour: string | null
   printType: string | null
   widthMm: number | null
-  lengthMm: number | null
-  originalLengthMm: number | null
   source: string | null
-  costMinor: number | null
-  currency: string | null
-  acquiredOn: string | null
   location: string | null
   care: string | null
   /** Who designed the print — a different question from `source`, the supplier. */
@@ -54,19 +78,21 @@ export interface Fabric {
   /** Where this came from, so it can be bought again. http(s) only, checked at write. */
   repurchaseUrl: string | null
   notes: string | null
+  /** The physical pieces, oldest first. The totals are a SUM over these. */
+  cuts: FabricCut[]
   photos: Photo[]
   tags: string[]
   createdAt: string
   updatedAt: string
 }
 
-/** Everything a caller may set. `id`, `photos` and timestamps are the server's. */
-export type FabricInput = Omit<Fabric, 'id' | 'photos' | 'createdAt' | 'updatedAt'>
+/** Everything a caller may set. `id`, `cuts`, `photos` and timestamps are the server's. */
+export type FabricInput = Omit<Fabric, 'id' | 'cuts' | 'photos' | 'createdAt' | 'updatedAt'>
 
 export interface FabricFilters {
   fibre?: string
   location?: string
-  /** Only fabrics whose remaining length is at least this many millimetres. */
+  /** Only fabrics whose remaining length — the sum of their cuts — is at least this many millimetres. */
   minLengthMm?: number
   tag?: string
 }
@@ -269,7 +295,8 @@ export type ProjectStatus = 'planned' | 'cutting' | 'sewing' | 'done' | 'abandon
 export const ACTIVE_PROJECT_STATUSES: readonly ProjectStatus[] = ['planned', 'cutting', 'sewing']
 
 export interface FabricAllocation {
-  fabricId: string
+  /** The cut the project takes from — the piece the person physically cut. */
+  cutId: string
   lengthMmUsed: number | null
 }
 
