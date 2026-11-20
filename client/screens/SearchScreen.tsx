@@ -9,7 +9,9 @@ const TAB_FOR_TYPE: Record<SearchHit['type'], TabName> = {
   fabric: 'stash',
   thread: 'stash',
   tool: 'stash',
+  notion: 'stash',
   pattern: 'patterns',
+  project: 'projects',
 }
 
 /** One box over everything indexed. Results do not animate — they are data (design brief §5). */

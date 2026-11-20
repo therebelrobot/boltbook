@@ -339,7 +339,7 @@ export interface ShoppingListItem {
 }
 
 export interface SearchHit {
-  type: 'fabric' | 'pattern' | 'thread' | 'tool'
+  type: 'fabric' | 'pattern' | 'thread' | 'tool' | 'notion' | 'project'
   id: string
   title: string
   snippet: string | null

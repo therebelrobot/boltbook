@@ -64,8 +64,8 @@ fabric on the shelf and the patterns in the box, and answers the question a proj
 - **Projects** — allocate fabric, thread and notions to a pattern view, and the **shortfall**
   readout names what is short (remaining minus what other live projects reserve) and what is too
   narrow, before you cut.
-- **Search** across fabric, patterns, thread and tools, ranked — with a second pass over the tags.
-  Notions and projects are not in the search index.
+- **Search** across fabric, patterns, thread, tools, notions and projects, ranked — with a second
+  pass over the tags. Projects come last on purpose: they are what you did, not what you have.
 
 ## Units
 
