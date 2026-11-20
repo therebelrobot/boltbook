@@ -27,8 +27,10 @@ export function tokensOf(query: string): string[] {
  *
  * BM25 scores from different tables are not comparable, so results are grouped
  * by entity in a fixed order rather than interleaved: fabric, pattern, thread,
- * tool. A record whose *tag* matches is appended to its group — FTS covers the
- * fields, this covers the labels, and the snippet says which tag matched.
+ * tool, notion, project. Projects come last on purpose — a project is about
+ * what you did, not what you have, and ranking one beside a bolt would
+ * surprise. A record whose *tag* matches is appended to its group — FTS covers
+ * the fields, this covers the labels, and the snippet says which tag matched.
  */
 export function searchAll(database: Database, query: string, limit = 25): SearchHit[] {
   const matchQuery = buildMatchQuery(query)
@@ -61,6 +63,18 @@ export function searchAll(database: Database, query: string, limit = 25): Search
        FROM tool_fts JOIN tool o ON o.rowid = tool_fts.rowid
       WHERE tool_fts MATCH ? ORDER BY bm25(tool_fts), o.name ASC LIMIT ?`,
   )
+  const notionRows = queryTable(
+    `SELECT n.id AS id, n.name AS name, n.colour AS colour,
+            snippet(notion_fts, -1, '[', ']', ' … ', 10) AS snippet
+       FROM notion_fts JOIN notion n ON n.rowid = notion_fts.rowid
+      WHERE notion_fts MATCH ? ORDER BY bm25(notion_fts), n.name ASC LIMIT ?`,
+  )
+  const projectRows = queryTable(
+    `SELECT j.id AS id, j.title AS title,
+            snippet(project_fts, -1, '[', ']', ' … ', 10) AS snippet
+       FROM project_fts JOIN project j ON j.rowid = project_fts.rowid
+      WHERE project_fts MATCH ? ORDER BY bm25(project_fts), j.title ASC LIMIT ?`,
+  )
 
   const hits: SearchHit[] = [
     ...fabricRows.map((row) => ({
@@ -88,6 +102,21 @@ export function searchAll(database: Database, query: string, limit = 25): Search
       type: 'tool' as const,
       id: String(row.id),
       title: String(row.name),
+      snippet: nullableText(row.snippet),
+      lengthMm: null,
+    })),
+    ...notionRows.map((row) => ({
+      type: 'notion' as const,
+      id: String(row.id),
+      title: nullableText(row.colour) ? `${String(row.name)} — ${String(row.colour)}` : String(row.name),
+      snippet: nullableText(row.snippet),
+      lengthMm: null,
+    })),
+    // Projects last: what you did, after what you have.
+    ...projectRows.map((row) => ({
+      type: 'project' as const,
+      id: String(row.id),
+      title: String(row.title),
       snippet: nullableText(row.snippet),
       lengthMm: null,
     })),
@@ -145,6 +174,18 @@ export function searchAll(database: Database, query: string, limit = 25): Search
       (ids) => database.prepare(`SELECT id, name FROM tool WHERE id IN (${placeholders(ids.length)})`).all(...ids) as Row[],
       'tool',
       (row) => String(row.name),
+    )
+    addTagged(
+      'notion',
+      (ids) => database.prepare(`SELECT id, name, colour FROM notion WHERE id IN (${placeholders(ids.length)})`).all(...ids) as Row[],
+      'notion',
+      (row) => (nullableText(row.colour) ? `${String(row.name)} — ${String(row.colour)}` : String(row.name)),
+    )
+    addTagged(
+      'project',
+      (ids) => database.prepare(`SELECT id, title FROM project WHERE id IN (${placeholders(ids.length)})`).all(...ids) as Row[],
+      'project',
+      (row) => String(row.title),
     )
   }
 

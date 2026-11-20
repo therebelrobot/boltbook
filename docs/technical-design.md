@@ -296,6 +296,12 @@ triggers:
 so search covers all six record kinds — notions and projects are not indexed today
 ([v2-plan §23](v2-plan.md)).
 
+**Built 2026-11-20 (migration 10, v2-plan §23).** `notion_fts(name, colour, spec, location, notes)`
+and `project_fts(title, notes)`, trigger-fed and backfilled by the migration itself — a record that
+existed before the migration is indexed by it, not only ones written after. Projects come last in
+the result order on purpose: a project is about what you did, not what you have, and the client
+labels every hit with its type. The tag second pass covers all six kinds.
+
 `GET /api/search?q=` runs a ranked `BM25` `MATCH` and returns hits with the entity type, a
 title, the best snippet, and — for fabric — remaining `length_mm`. Free text is tokenised and
 each word is quoted as a prefix term (`"linen"*` joined by `AND`), so user punctuation can never
@@ -306,7 +312,7 @@ be read as FTS5 syntax.
 have to re-index the owning record. Instead, `searchAll` unions the FTS hits with the records
 whose *tags* match any token (`repository/tags.searchByTag`), de-duplicating by entity and
 setting the snippet to `tags: …`. FTS covers the fields; the union covers the labels. At a
-personal scale this is simpler than maintaining five tag-indexing trigger sets, and it is honest
+personal scale this is simpler than maintaining tag-indexing trigger sets, and it is honest
 about what matched.
 
 ## 7. Photos and files

@@ -13,6 +13,7 @@ import { DatabaseSync } from 'node:sqlite'
  * 9 — photos on every record: `fabric_photo` becomes `photo`, keyed by
  *     entity type + id; the existing rows are copied byte-for-byte as
  *     `entity_type = 'fabric'`.
+ * 10 — search reaches the small records: notion and project join the FTS set.
  */
 /** Exported for the migration tests: they build an older schema and step it forward. */
 export const MIGRATIONS: string[] = [
@@ -331,6 +332,54 @@ export const MIGRATIONS: string[] = [
       SELECT id, 'fabric', fabric_id, position, content_type, bytes, width_px, height_px, created_at
         FROM fabric_photo;
     DROP TABLE fabric_photo;`,
+
+   // The stash you most need to search is the one holding the most small
+   // records, and notions are exactly that. Projects too — returned last, and
+   // labelled clearly, because a project is about what you did, not what you
+   // have. External-content FTS5, trigger-fed, like the other four.
+   `CREATE VIRTUAL TABLE notion_fts USING fts5(
+      name, colour, spec, location, notes,
+      content='notion', content_rowid='rowid'
+    );
+    CREATE TRIGGER notion_after_insert AFTER INSERT ON notion BEGIN
+      INSERT INTO notion_fts(rowid, name, colour, spec, location, notes)
+      VALUES (new.rowid, new.name, new.colour, new.spec, new.location, new.notes);
+    END;
+    CREATE TRIGGER notion_after_delete AFTER DELETE ON notion BEGIN
+      INSERT INTO notion_fts(notion_fts, rowid, name, colour, spec, location, notes)
+      VALUES ('delete', old.rowid, old.name, old.colour, old.spec, old.location, old.notes);
+    END;
+    CREATE TRIGGER notion_after_update AFTER UPDATE ON notion BEGIN
+      INSERT INTO notion_fts(notion_fts, rowid, name, colour, spec, location, notes)
+      VALUES ('delete', old.rowid, old.name, old.colour, old.spec, old.location, old.notes);
+      INSERT INTO notion_fts(rowid, name, colour, spec, location, notes)
+      VALUES (new.rowid, new.name, new.colour, new.spec, new.location, new.notes);
+    END;
+
+    CREATE VIRTUAL TABLE project_fts USING fts5(
+      title, notes,
+      content='project', content_rowid='rowid'
+    );
+    CREATE TRIGGER project_after_insert AFTER INSERT ON project BEGIN
+      INSERT INTO project_fts(rowid, title, notes)
+      VALUES (new.rowid, new.title, new.notes);
+    END;
+    CREATE TRIGGER project_after_delete AFTER DELETE ON project BEGIN
+      INSERT INTO project_fts(project_fts, rowid, title, notes)
+      VALUES ('delete', old.rowid, old.title, old.notes);
+    END;
+    CREATE TRIGGER project_after_update AFTER UPDATE ON project BEGIN
+      INSERT INTO project_fts(project_fts, rowid, title, notes)
+      VALUES ('delete', old.rowid, old.title, old.notes);
+      INSERT INTO project_fts(rowid, title, notes)
+      VALUES (new.rowid, new.title, new.notes);
+    END;
+
+    -- Existing rows index now; the triggers only keep it current from here.
+    INSERT INTO notion_fts(rowid, name, colour, spec, location, notes)
+      SELECT rowid, name, colour, spec, location, notes FROM notion;
+    INSERT INTO project_fts(rowid, title, notes)
+      SELECT rowid, title, notes FROM project;`,
 ]
 
 export type Database = DatabaseSync
