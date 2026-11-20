@@ -12,6 +12,7 @@ import type {
   ProjectInput,
   ProjectStatus,
   ShortfallLine,
+  ShoppingListItem,
   ThreadAllocation,
 } from '../../shared/model'
 import { RecordNotFoundError, RecordValidationError } from '../errors'
@@ -331,6 +332,70 @@ export class ProjectRepository {
       )
       .get(viewId) as Row | undefined
     return row ? nullableNumber(row.fabric_width_mm) : null
+  }
+
+  /**
+   * The shortfall as a shopping list: short lines only, named, with the stored
+   * source where there is one. Metric and canonical; the route presents it.
+   */
+  shoppingList(projectId: string): ShoppingListItem[] {
+    const lines = this.shortfall(projectId).filter((line) => line.short > 0)
+    if (lines.length === 0) return []
+
+    const ids = {
+      fabric: lines.filter((line) => line.kind === 'fabric').map((line) => line.targetId),
+      thread: lines.filter((line) => line.kind === 'thread').map((line) => line.targetId),
+      notion: lines.filter((line) => line.kind === 'notion').map((line) => line.targetId),
+    }
+    const describe = (kind: 'fabric' | 'thread' | 'notion', columns: string): Map<string, Row> => {
+      const byId = new Map<string, Row>()
+      if (ids[kind].length === 0) return byId
+      const rows = this.database
+        .prepare(`SELECT id, ${columns} FROM ${kind} WHERE id IN (${placeholders(ids[kind].length)})`)
+        .all(...ids[kind]) as Row[]
+      for (const row of rows) byId.set(String(row.id), row)
+      return byId
+    }
+    const fabrics = describe('fabric', 'name, colour, source')
+    const threads = describe('thread', 'name, colour, source')
+    const notions = describe('notion', 'name, spec, unit')
+
+    return lines.map((line) => {
+      if (line.kind === 'fabric') {
+        const row = fabrics.get(line.targetId)
+        return {
+          kind: line.kind,
+          targetId: line.targetId,
+          name: row ? String(row.name) : 'Unknown fabric',
+          detail: row ? nullableText(row.colour) : null,
+          source: row ? nullableText(row.source) : null,
+          amount: line.short,
+          unit: 'mm',
+        }
+      }
+      if (line.kind === 'thread') {
+        const row = threads.get(line.targetId)
+        return {
+          kind: line.kind,
+          targetId: line.targetId,
+          name: row ? String(row.name) : 'Unknown thread',
+          detail: row ? nullableText(row.colour) : null,
+          source: row ? nullableText(row.source) : null,
+          amount: line.short,
+          unit: 'm',
+        }
+      }
+      const row = notions.get(line.targetId)
+      return {
+        kind: line.kind,
+        targetId: line.targetId,
+        name: row ? String(row.name) : 'Unknown notion',
+        detail: row ? nullableText(row.spec) : null,
+        source: null,
+        amount: line.short,
+        unit: row ? nullableText(row.unit) : null,
+      }
+    })
   }
 }
 

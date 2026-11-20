@@ -323,6 +323,21 @@ export interface ShortfallLine {
   tooNarrow: boolean
 }
 
+/** One line of a project's shopping list: what to buy, and how much. */
+export interface ShoppingListItem {
+  kind: ConsumableKind
+  targetId: string
+  name: string
+  /** The record's own second field, so the line identifies the thing: a thread's colour, a notion's spec. */
+  detail: string | null
+  /** The stored `source` — where it came from. Notions have none. */
+  source: string | null
+  /** How much to buy, in the claim's own unit: millimetres of fabric, metres of thread, or a count. */
+  amount: number
+  /** 'mm' | 'm' | the notion's stored unit — or an imperial label when asked for. */
+  unit: string | null
+}
+
 export interface SearchHit {
   type: 'fabric' | 'pattern' | 'thread' | 'tool'
   id: string

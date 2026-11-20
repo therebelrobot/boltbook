@@ -21,6 +21,7 @@ import { searchAll } from './repositories/search'
 import { buildExportZip } from './export'
 import { importExport } from './import'
 import { listLocations } from './locations'
+import { presentShoppingList, shoppingListText } from './shoppingList'
 import {
   FABRIC_ALLOCATION_MEASURES,
   FABRIC_MEASURES,
@@ -884,6 +885,19 @@ export function createApplication(dependencies: ApplicationDependencies) {
   app.get('/api/projects/:projectId/shortfall', (context) => {
     const lines: ShortfallLine[] = projects.shortfall(context.req.param('projectId'))
     return context.json(presentShortfallLines(lines, unitsOf(context)))
+  })
+
+  // The shortfall as something to act on: short lines only, named, printable.
+  // ?format=text is what the copy button puts on the clipboard.
+  app.get('/api/projects/:projectId/shopping-list', (context) => {
+    const projectId = context.req.param('projectId')
+    const items = presentShoppingList(projects.shoppingList(projectId), unitsOf(context))
+    if (context.req.query('format') === 'text') {
+      const project = projects.get(projectId)
+      if (!project) throw new RecordNotFoundError('No such project.')
+      return context.text(shoppingListText(project.title, items))
+    }
+    return context.json({ items })
   })
 
   // Tags — one vocabulary, shared by every record

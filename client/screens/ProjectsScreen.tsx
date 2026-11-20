@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, photoUrl, uploadPhoto } from '../api'
 import { useCollection } from '../useCollection'
 import { EntitySheet } from '../components/EntitySheet'
 import { PhotoField } from '../components/PhotoField'
+import { PrintOverlay } from '../components/PrintOverlay'
 import { useToast } from '../components/Toast'
 import { PROJECT_FIELDS } from '../fields'
 import { formatQuantity, joinMeta } from '../format'
@@ -10,7 +11,8 @@ import { formatStored } from '../units'
 import type { LengthUnit } from '../units'
 import { useUnit } from '../unitPreference'
 import { preparePhoto } from '../photo'
-import type { Notion, Photo, ProjectAllocations, ShortfallLine, Thread, Fabric } from '../../shared/model'
+import type { PaperSize } from '../tiling'
+import type { Notion, Photo, ProjectAllocations, ShortfallLine, ShoppingListItem, Thread, Fabric } from '../../shared/model'
 
 interface Project {
   id: string
@@ -232,6 +234,134 @@ function AllocationEditor({ project, onChanged }: { project: Project; onChanged:
   )
 }
 
+const GROUP_LABELS: Record<ShoppingListItem['kind'], string> = {
+  fabric: 'Fabric',
+  thread: 'Thread',
+  notion: 'Notions',
+}
+
+const KIND_ORDER: readonly ShoppingListItem['kind'][] = ['fabric', 'thread', 'notion']
+
+/**
+ * The shortfall as something to act on: the short lines, grouped, copyable as
+ * text and printable on one page. Read-only — the allocation editor above it
+ * does the changing.
+ */
+function ShoppingList({ project }: { project: Project }) {
+  const [items, setItems] = useState<ShoppingListItem[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [printing, setPrinting] = useState(false)
+  const [paper, setPaper] = useState<PaperSize>('a4')
+
+  useEffect(() => {
+    let cancelled = false
+    setItems(null)
+    setError(null)
+    api<{ items: ShoppingListItem[] }>(`${PATHS}/${project.id}/shopping-list`)
+      .then((result) => {
+        if (!cancelled) setItems(result.items)
+      })
+      .catch((caught: unknown) => {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : 'Could not load the shopping list.')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [project.id])
+
+  const copy = async (): Promise<void> => {
+    // The clipboard gets exactly what the server renders — one source of truth.
+    const response = await fetch(`${PATHS}/${project.id}/shopping-list?format=text`, { credentials: 'same-origin' })
+    if (!response.ok) return
+    await navigator.clipboard.writeText(await response.text())
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 2000)
+  }
+
+  const label = (item: ShoppingListItem): string => {
+    const identified = item.detail ? `${item.name} (${item.detail})` : item.name
+    const unit = item.unit ? ` ${item.unit}` : ''
+    return `${identified} — ${item.amount}${unit}`
+  }
+
+  const groups = KIND_ORDER.map((kind) => ({ kind, lines: (items ?? []).filter((item) => item.kind === kind) })).filter(
+    (group) => group.lines.length > 0,
+  )
+
+  const listBody = (forPrint: boolean): ReactNode => (
+    <>
+      {groups.map((group) => (
+        <div key={group.kind} className={forPrint ? 'shopping-group' : undefined}>
+          <h4>{GROUP_LABELS[group.kind]}</h4>
+          <ul>
+            {group.lines.map((item) => (
+              <li key={item.targetId}>
+                {label(item)}
+                {item.source && <span className="muted"> — from {item.source}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </>
+  )
+
+  return (
+    <div className="shopping-list">
+      <span className="label" style={{ display: 'block', fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+        Shopping list
+      </span>
+
+      {error && <p className="error">{error}</p>}
+      {items === null && !error && <p className="muted">Loading…</p>}
+      {items !== null && items.length === 0 && <p className="muted">Nothing to buy — the stash covers this project.</p>}
+
+      {items !== null && items.length > 0 && (
+        <>
+          {listBody(false)}
+          <div className="inline-actions" style={{ marginTop: '0.5rem' }}>
+            <button type="button" className="button" onClick={() => void copy()}>
+              {copied ? 'Copied' : 'Copy as text'}
+            </button>
+            <button type="button" className="button" onClick={() => setPrinting(true)}>
+              Print
+            </button>
+          </div>
+        </>
+      )}
+
+      {printing && (
+        <PrintOverlay
+          title="Shopping list"
+          paper={paper}
+          onClose={() => setPrinting(false)}
+          controls={
+            <>
+              <div className="segmented" role="group" aria-label="Paper size">
+                <button type="button" aria-pressed={paper === 'a4'} onClick={() => setPaper('a4')}>
+                  A4
+                </button>
+                <button type="button" aria-pressed={paper === 'letter'} onClick={() => setPaper('letter')}>
+                  Letter
+                </button>
+              </div>
+              <button type="button" className="button primary" onClick={() => window.print()}>
+                Print
+              </button>
+            </>
+          }
+        >
+          <div className="print-sheet shopping-print">
+            <h3>{project.title}</h3>
+            {listBody(true)}
+          </div>
+        </PrintOverlay>
+      )}
+    </div>
+  )
+}
+
 export function ProjectsScreen() {
   const { items, error, reload } = useCollection<Project>(PATHS)
   const toast = useToast()
@@ -378,7 +508,10 @@ export function ProjectsScreen() {
           }
         >
           {sheet.mode === 'edit' && record ? (
-            <AllocationEditor project={record} onChanged={() => void reload()} />
+            <>
+              <AllocationEditor project={record} onChanged={() => void reload()} />
+              <ShoppingList project={record} />
+            </>
           ) : (
             <p className="muted">Save the project, then allocate fabric, thread and notions.</p>
           )}
