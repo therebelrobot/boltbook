@@ -40,7 +40,8 @@ export function searchAll(database: Database, query: string, limit = 25): Search
   const queryTable = (sql: string): Row[] => (matchQuery ? (database.prepare(sql).all(matchQuery, limit) as Row[]) : [])
 
   const fabricRows = queryTable(
-    `SELECT f.id AS id, f.name AS name, f.length_mm AS length_mm,
+    `SELECT f.id AS id, f.name AS name,
+            (SELECT SUM(length_mm) FROM fabric_cut WHERE fabric_id = f.id) AS length_mm,
             snippet(fabric_fts, -1, '[', ']', ' … ', 10) AS snippet
        FROM fabric_fts JOIN fabric f ON f.rowid = fabric_fts.rowid
       WHERE fabric_fts MATCH ? ORDER BY bm25(fabric_fts), f.name ASC LIMIT ?`,
@@ -153,7 +154,13 @@ export function searchAll(database: Database, query: string, limit = 25): Search
 
     addTagged(
       'fabric',
-      (ids) => database.prepare(`SELECT id, name, length_mm FROM fabric WHERE id IN (${placeholders(ids.length)})`).all(...ids) as Row[],
+      (ids) =>
+        database
+          .prepare(
+            `SELECT id, name, (SELECT SUM(length_mm) FROM fabric_cut WHERE fabric_id = fabric.id) AS length_mm
+               FROM fabric WHERE id IN (${placeholders(ids.length)})`,
+          )
+          .all(...ids) as Row[],
       'fabric',
       (row) => String(row.name),
     )

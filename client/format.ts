@@ -51,3 +51,27 @@ export function remainingFraction(remaining: number | null | undefined, original
   if (original === null || original === undefined || original <= 0) return null
   return Math.max(0, Math.min(1, remaining / original))
 }
+
+/**
+ * A fabric's remaining length is the sum of its cuts — derived, never stored.
+ * null when nothing is measured yet; an unmeasured cut contributes nothing
+ * rather than inventing a zero that would understate what is on the shelf.
+ */
+export function fabricRemaining(
+  fabric: { cuts: ReadonlyArray<{ lengthMm: number | null }> } | null | undefined,
+): number | null {
+  const cuts = fabric?.cuts ?? []
+  if (cuts.length === 0) return null
+  if (cuts.every((cut) => cut.lengthMm === null)) return null
+  return cuts.reduce((sum, cut) => sum + (cut.lengthMm ?? 0), 0)
+}
+
+/** The original length behaves the same way: the sum of what the cuts were bought as. */
+export function fabricOriginal(
+  fabric: { cuts: ReadonlyArray<{ originalLengthMm: number | null }> } | null | undefined,
+): number | null {
+  const cuts = fabric?.cuts ?? []
+  if (cuts.length === 0) return null
+  if (cuts.every((cut) => cut.originalLengthMm === null)) return null
+  return cuts.reduce((sum, cut) => sum + (cut.originalLengthMm ?? 0), 0)
+}

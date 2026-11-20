@@ -1,4 +1,4 @@
-import type { ShortfallLine } from '../shared/model'
+import type { Fabric, ShortfallLine } from '../shared/model'
 import { RecordValidationError } from './errors'
 
 /**
@@ -23,9 +23,14 @@ export interface MeasureSpec {
   kind: MeasureKind
 }
 
+/** The fabric is the cloth: only its width is a measure on the fabric row. */
 export const FABRIC_MEASURES: readonly MeasureSpec[] = [
-  { canonical: 'lengthMm', imperial: 'lengthYd', kind: 'fabricLength' },
   { canonical: 'widthMm', imperial: 'widthIn', kind: 'fabricWidth' },
+]
+
+/** Lengths live on the cut: what is left, and what was bought. */
+export const FABRIC_CUT_MEASURES: readonly MeasureSpec[] = [
+  { canonical: 'lengthMm', imperial: 'lengthYd', kind: 'fabricLength' },
   { canonical: 'originalLengthMm', imperial: 'originalLengthYd', kind: 'fabricLength' },
 ]
 
@@ -117,6 +122,16 @@ export function presentMeasures<T extends object>(record: T, specs: readonly Mea
     delete result[spec.canonical]
   }
   return result as T
+}
+
+/** A fabric presents its width; its cuts present their lengths. */
+export function presentFabric(fabric: Fabric, units: Units): Fabric {
+  const widthOnly = presentMeasures(fabric, FABRIC_MEASURES, units)
+  if (units === 'metric') return widthOnly
+  return {
+    ...widthOnly,
+    cuts: fabric.cuts.map((cut) => presentMeasures(cut, FABRIC_CUT_MEASURES, units)),
+  }
 }
 
 /** Shortfall lines carry their own unit, so the numbers never stand alone. */

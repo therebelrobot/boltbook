@@ -110,20 +110,50 @@ async function main(): Promise<void> {
     console.log('signed in')
   }
 
-  const fabrics: Array<[Record<string, unknown>, [number, number, number] | null]> = [
-    [{ name: 'Washed linen', fibre: 'linen', weight: 'mid', colour: 'oatmeal', lengthMm: 2500, widthMm: 1400, originalLengthMm: 3000, location: 'Bin A', care: 'wash cold', tags: ['linen', 'summer'] }, [214, 205, 186]],
-    [{ name: 'Indigo chambray', fibre: 'cotton', colour: 'indigo', lengthMm: 1800, widthMm: 1150, originalLengthMm: 2000, location: 'Bin A', notes: 'lightweight for a shirt', tags: ['cotton', 'shirt'] }, [58, 74, 104]],
-    [{ name: 'Wool coating', fibre: 'wool', colour: 'camel', lengthMm: 1600, widthMm: 1500, originalLengthMm: 1800, location: 'Chest', care: 'dry clean', tags: ['wool', 'winter'] }, [178, 140, 96]],
-    [{ name: 'Silk habotai', fibre: 'silk', colour: 'pearl', lengthMm: 900, widthMm: 1140, location: 'Drawer 2', tags: ['silk', 'lining'] }, [232, 226, 219]],
+  const fabrics: Array<[Record<string, unknown>, Record<string, unknown> | null, [number, number, number] | null]> = [
+    [
+      { name: 'Washed linen', fibre: 'linen', weight: 'mid', colour: 'oatmeal', widthMm: 1400, location: 'Bin A', care: 'wash cold', costMinor: 4500, currency: 'USD', tags: ['linen', 'summer'] },
+      { lengthMm: 2500, originalLengthMm: 3000, costMinor: 4500, currency: 'USD' },
+      [214, 205, 186],
+    ],
+    [
+      { name: 'Indigo chambray', fibre: 'cotton', colour: 'indigo', widthMm: 1150, location: 'Bin A', notes: 'lightweight for a shirt', tags: ['cotton', 'shirt'] },
+      { lengthMm: 1800, originalLengthMm: 2000 },
+      [58, 74, 104],
+    ],
+    [
+      { name: 'Wool coating', fibre: 'wool', colour: 'camel', widthMm: 1500, location: 'Chest', care: 'dry clean', tags: ['wool', 'winter'] },
+      { lengthMm: 1600, originalLengthMm: 1800 },
+      [178, 140, 96],
+    ],
+    [
+      { name: 'Silk habotai', fibre: 'silk', colour: 'pearl', widthMm: 1140, location: 'Drawer 2', tags: ['silk', 'lining'] },
+      { lengthMm: 900 },
+      [232, 226, 219],
+    ],
   ]
 
   const fabricIds: string[] = []
-  for (const [body, colour] of fabrics) {
-    const created = await call<{ id: string }>('/api/fabrics', 'POST', body)
+  let linenCutId = ''
+  let chambrayCutId = ''
+  for (const [body, cut, colour] of fabrics) {
+    const created = await call<{ id: string; name: string; cuts: Array<{ id: string }> }>('/api/fabrics', 'POST', body)
     fabricIds.push(created.id)
+    if (created.name === 'Washed linen') linenCutId = created.cuts[0]!.id
+    if (created.name === 'Indigo chambray') chambrayCutId = created.cuts[0]!.id
+    // Lengths and prices live on the cut; the fabric is the cloth.
+    if (cut) await call(`/api/fabrics/${created.id}/cuts/${created.cuts[0]!.id}`, 'PUT', cut)
     if (colour) await uploadPhoto(created.id, solidPng(600, 450, colour))
   }
   console.log(`${fabricIds.length} fabrics`)
+
+  // A second bolt of the same linen — the case the cuts exist for.
+  const secondBolt = await call<{ id: string; cuts: Array<{ id: string }> }>('/api/fabrics', 'POST', {
+    name: 'Washed linen', fibre: 'linen', weight: 'mid', colour: 'oatmeal', widthMm: 1400, location: 'Bin A', tags: ['linen', 'remnant'],
+  })
+  await call(`/api/fabrics/${secondBolt.id}/cuts/${secondBolt.cuts[0]!.id}`, 'PUT', { lengthMm: 2000, originalLengthMm: 2000, costMinor: 2800, currency: 'USD' })
+  await call(`/api/fabrics/${secondBolt.id}/cuts`, 'POST', { lengthMm: 500, originalLengthMm: 500, costMinor: 700, currency: 'USD' })
+  fabricIds.push(secondBolt.id)
 
   const threads = await Promise.all([
     call<{ id: string }>('/api/threads', 'POST', { name: 'Mara 120', brand: 'Gütermann', colour: 'ecru', colourCode: '169', fibre: 'polyester', weight: '120', spools: 3, lengthM: 900, originalLengthM: 1000, needleSize: '80/12', location: 'Thread box', tags: ['shirt'] }),
@@ -153,14 +183,14 @@ async function main(): Promise<void> {
 
   const shirt = await call<{ id: string }>('/api/projects', 'POST', { title: 'Archer shirt in linen', status: 'cutting', startedOn: '2026-11-10', tags: ['shirt', 'summer'] })
   await call(`/api/projects/${shirt.id}/allocations`, 'PUT', {
-    fabrics: [{ fabricId: fabricIds[0], lengthMmUsed: 2800 }],
+    fabrics: [{ cutId: linenCutId, lengthMmUsed: 2800 }],
     threads: [{ threadId: threads[0]!.id, lengthMUsed: 400 }],
     notions: [{ notionId: notions[1]!.id, quantityUsed: 12 }],
   })
 
   const chambray = await call<{ id: string }>('/api/projects', 'POST', { title: 'Chambray Archer, second go', status: 'planned', patternViewId: view.id, tags: ['shirt'] })
   await call(`/api/projects/${chambray.id}/allocations`, 'PUT', {
-    fabrics: [{ fabricId: fabricIds[1], lengthMmUsed: 1500 }],
+    fabrics: [{ cutId: chambrayCutId, lengthMmUsed: 1500 }],
     threads: [{ threadId: threads[1]!.id, lengthMUsed: 300 }],
   })
 

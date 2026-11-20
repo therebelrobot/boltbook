@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import { TagsRepository } from './tags'
 import { PhotoRepository } from './photos'
+import { FabricRepository } from './fabrics'
 import { computeShortfalls, keyOf, type AllocationClaim } from '../shortfall'
 import type {
   FabricAllocation,
@@ -51,10 +52,12 @@ const emptyAllocations = (): ProjectAllocations => ({ fabrics: [], threads: [], 
 export class ProjectRepository {
   private readonly tags: TagsRepository
   private readonly photos: PhotoRepository
+  private readonly fabrics: FabricRepository
 
   constructor(private readonly database: Database) {
     this.tags = new TagsRepository(database)
     this.photos = new PhotoRepository(database)
+    this.fabrics = new FabricRepository(database)
   }
 
   count(): number {
@@ -68,13 +71,15 @@ export class ProjectRepository {
     if (projectIds.length === 0) return byProject
 
     const clause = `WHERE project_id IN (${placeholders(projectIds.length)})`
-    const fabricRows = this.database.prepare(`SELECT * FROM project_fabric ${clause}`).all(...projectIds) as Row[]
+    const fabricRows = this.database
+      .prepare(`SELECT project_id, cut_id, length_mm_used FROM project_cut ${clause} ORDER BY cut_id ASC`)
+      .all(...projectIds) as Row[]
     const threadRows = this.database.prepare(`SELECT * FROM project_thread ${clause}`).all(...projectIds) as Row[]
     const notionRows = this.database.prepare(`SELECT * FROM project_notion ${clause}`).all(...projectIds) as Row[]
 
     for (const row of fabricRows) {
       byProject.get(String(row.project_id))?.fabrics.push({
-        fabricId: String(row.fabric_id),
+        cutId: String(row.cut_id),
         lengthMmUsed: nullableNumber(row.length_mm_used),
       })
     }
@@ -177,19 +182,19 @@ export class ProjectRepository {
 
   setAllocations(id: string, allocations: ProjectAllocations, nowIso: string): Project {
     this.#require(id)
-    for (const allocation of allocations.fabrics) this.#assertExists('fabric', allocation.fabricId)
+    for (const allocation of allocations.fabrics) this.#assertCutExists(allocation.cutId)
     for (const allocation of allocations.threads) this.#assertExists('thread', allocation.threadId)
     for (const allocation of allocations.notions) this.#assertExists('notion', allocation.notionId)
 
     this.database.exec('BEGIN')
     try {
-      this.database.prepare('DELETE FROM project_fabric WHERE project_id = ?').run(id)
+      this.database.prepare('DELETE FROM project_cut WHERE project_id = ?').run(id)
       this.database.prepare('DELETE FROM project_thread WHERE project_id = ?').run(id)
       this.database.prepare('DELETE FROM project_notion WHERE project_id = ?').run(id)
       const insertFabric = this.database.prepare(
-        'INSERT INTO project_fabric (project_id, fabric_id, length_mm_used) VALUES (?, ?, ?)',
+        'INSERT INTO project_cut (project_id, cut_id, length_mm_used) VALUES (?, ?, ?)',
       )
-      for (const allocation of allocations.fabrics) insertFabric.run(id, allocation.fabricId, allocation.lengthMmUsed)
+      for (const allocation of allocations.fabrics) insertFabric.run(id, allocation.cutId, allocation.lengthMmUsed)
       const insertThread = this.database.prepare(
         'INSERT INTO project_thread (project_id, thread_id, length_m_used) VALUES (?, ?, ?)',
       )
@@ -207,21 +212,27 @@ export class ProjectRepository {
     return this.#require(id)
   }
 
-  #assertExists(kind: 'fabric' | 'thread' | 'notion', targetId: string): void {
+  #assertExists(kind: 'thread' | 'notion', targetId: string): void {
     const row = this.database.prepare(`SELECT 1 AS present FROM ${kind} WHERE id = ?`).get(targetId) as Row | undefined
     if (!row) throw new RecordValidationError(`No ${kind} with id ${targetId}.`)
   }
 
+  #assertCutExists(cutId: string): void {
+    const row = this.database.prepare('SELECT 1 AS present FROM fabric_cut WHERE id = ?').get(cutId) as Row | undefined
+    if (!row) throw new RecordValidationError(`No fabric cut with id ${cutId}.`)
+  }
+
   #consume(projectId: string, nowIso: string): void {
+    // The project took a named cut; only that cut is decremented.
     const fabricRows = this.database
-      .prepare('SELECT fabric_id, length_mm_used FROM project_fabric WHERE project_id = ?')
+      .prepare('SELECT cut_id, length_mm_used FROM project_cut WHERE project_id = ?')
       .all(projectId) as Row[]
-    const decrementFabric = this.database.prepare(
-      'UPDATE fabric SET length_mm = MAX(0, COALESCE(length_mm, 0) - ?) WHERE id = ?',
+    const decrementCut = this.database.prepare(
+      'UPDATE fabric_cut SET length_mm = MAX(0, COALESCE(length_mm, 0) - ?), updated_at = ? WHERE id = ?',
     )
     for (const row of fabricRows) {
       if (row.length_mm_used !== null && row.length_mm_used !== undefined) {
-        decrementFabric.run(Number(row.length_mm_used), String(row.fabric_id))
+        decrementCut.run(Number(row.length_mm_used), nowIso, String(row.cut_id))
       }
     }
 
@@ -252,11 +263,11 @@ export class ProjectRepository {
     this.database.prepare('UPDATE project SET consumed = 1, updated_at = ? WHERE id = ?').run(nowIso, projectId)
   }
 
-  /** What other active projects have reserved, per `${kind}:${id}`. */
+  /** What other active projects have reserved, per `${kind}:${id}` — fabric reserved per cut. */
   #reserved(excludeProjectId: string): Record<string, number> {
     const reserved: Record<string, number> = {}
     const queries = [
-      ['fabric', 'project_fabric', 'fabric_id', 'length_mm_used'],
+      ['fabric', 'project_cut', 'cut_id', 'length_mm_used'],
       ['thread', 'project_thread', 'thread_id', 'length_m_used'],
       ['notion', 'project_notion', 'notion_id', 'quantity_used'],
     ] as const
@@ -277,7 +288,7 @@ export class ProjectRepository {
   shortfall(projectId: string): ShortfallLine[] {
     const project = this.#require(projectId)
     const claims: AllocationClaim[] = [
-      ...project.allocations.fabrics.map((a) => ({ kind: 'fabric' as const, targetId: a.fabricId, amount: a.lengthMmUsed })),
+      ...project.allocations.fabrics.map((a) => ({ kind: 'fabric' as const, targetId: a.cutId, amount: a.lengthMmUsed })),
       ...project.allocations.threads.map((a) => ({ kind: 'thread' as const, targetId: a.threadId, amount: a.lengthMUsed })),
       ...project.allocations.notions.map((a) => ({ kind: 'notion' as const, targetId: a.notionId, amount: a.quantityUsed })),
     ]
@@ -286,11 +297,17 @@ export class ProjectRepository {
     const remaining: Record<string, number | null> = {}
     const widthMm: Record<string, number | null> = {}
 
-    const fabricIds = project.allocations.fabrics.map((a) => a.fabricId)
-    if (fabricIds.length > 0) {
+    // The claim is against a cut, so what is "left" is that cut's remaining —
+    // the fabric's other cuts are other pieces of cloth.
+    const cutIds = project.allocations.fabrics.map((a) => a.cutId)
+    if (cutIds.length > 0) {
       const rows = this.database
-        .prepare(`SELECT id, length_mm, width_mm FROM fabric WHERE id IN (${placeholders(fabricIds.length)})`)
-        .all(...fabricIds) as Row[]
+        .prepare(
+          `SELECT c.id AS id, c.length_mm AS length_mm, f.width_mm AS width_mm
+             FROM fabric_cut c JOIN fabric f ON f.id = c.fabric_id
+            WHERE c.id IN (${placeholders(cutIds.length)})`,
+        )
+        .all(...cutIds) as Row[]
       for (const row of rows) {
         remaining[keyOf('fabric', String(row.id))] = nullableNumber(row.length_mm)
         widthMm[keyOf('fabric', String(row.id))] = nullableNumber(row.width_mm)
@@ -347,7 +364,7 @@ export class ProjectRepository {
       thread: lines.filter((line) => line.kind === 'thread').map((line) => line.targetId),
       notion: lines.filter((line) => line.kind === 'notion').map((line) => line.targetId),
     }
-    const describe = (kind: 'fabric' | 'thread' | 'notion', columns: string): Map<string, Row> => {
+    const describe = (kind: 'thread' | 'notion', columns: string): Map<string, Row> => {
       const byId = new Map<string, Row>()
       if (ids[kind].length === 0) return byId
       const rows = this.database
@@ -356,19 +373,21 @@ export class ProjectRepository {
       for (const row of rows) byId.set(String(row.id), row)
       return byId
     }
-    const fabrics = describe('fabric', 'name, colour, source')
     const threads = describe('thread', 'name, colour, source')
     const notions = describe('notion', 'name, spec, unit')
 
     return lines.map((line) => {
       if (line.kind === 'fabric') {
-        const row = fabrics.get(line.targetId)
+        // The claim names a cut; the line names the cloth, and — when the fabric
+        // has more than one piece — which piece it is.
+        const fabric = this.fabrics.fabricOfCut(line.targetId)
+        const cutSuffix = fabric && fabric.cutCount > 1 ? ` — cut ${fabric.cutPosition + 1}` : ''
         return {
           kind: line.kind,
           targetId: line.targetId,
-          name: row ? String(row.name) : 'Unknown fabric',
-          detail: row ? nullableText(row.colour) : null,
-          source: row ? nullableText(row.source) : null,
+          name: fabric ? fabric.name : 'Unknown fabric',
+          detail: fabric ? [nullableText(fabric.colour), cutSuffix].filter(Boolean).join('') || null : null,
+          source: fabric ? fabric.source : null,
           amount: line.short,
           unit: 'mm',
         }

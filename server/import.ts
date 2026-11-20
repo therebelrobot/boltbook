@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { Database } from './database'
 import { readZip } from './zip'
 import { RecordValidationError } from './errors'
@@ -21,11 +22,12 @@ type Row = Record<string, unknown>
 /** Children before parents, so no delete cascades into a row we still need. */
 const DELETE_ORDER = [
   'tag_link',
-  'project_fabric',
+  'project_cut',
   'project_thread',
   'project_notion',
   'project',
   'photo',
+  'fabric_cut',
   'pattern_file',
   'pattern_requirement',
   'pattern_view',
@@ -40,6 +42,7 @@ const DELETE_ORDER = [
 /** Parents before children, so every foreign key already exists. */
 const INSERT_ORDER = [
   'fabric',
+  'fabric_cut',
   'thread',
   'notion',
   'tool',
@@ -47,7 +50,7 @@ const INSERT_ORDER = [
   'pattern_view',
   'pattern_requirement',
   'project',
-  'project_fabric',
+  'project_cut',
   'project_thread',
   'project_notion',
   'tag',
@@ -110,6 +113,41 @@ export function importExport(database: Database, zip: Buffer): ImportResult {
       const rows = Array.isArray(tables[table]) ? tables[table]! : []
       for (const row of rows) insert(table, row)
       counts[table] = rows.length
+    }
+
+    // An export from before the cuts migration has no `fabric_cut` table: the
+    // fabric rows still carry their lengths and prices. Backfill one cut per
+    // fabric exactly as the migration did, and point every legacy
+    // `project_fabric` allocation at the cut its fabric became.
+    if (!Array.isArray(tables.fabric_cut)) {
+      const cutIdByFabric = new Map<string, string>()
+      const fabricRows = Array.isArray(tables.fabric) ? tables.fabric! : []
+      for (const fabricRow of fabricRows) {
+        const cutId = randomUUID()
+        cutIdByFabric.set(String(fabricRow.id), cutId)
+        insert('fabric_cut', {
+          id: cutId,
+          fabric_id: fabricRow.id,
+          position: 0,
+          length_mm: fabricRow.length_mm ?? null,
+          original_length_mm: fabricRow.original_length_mm ?? null,
+          cost_minor: fabricRow.cost_minor ?? null,
+          currency: fabricRow.currency ?? null,
+          acquired_on: fabricRow.acquired_on ?? null,
+          created_at: fabricRow.created_at,
+          updated_at: fabricRow.updated_at,
+        })
+      }
+      counts.fabric_cut = fabricRows.length
+      const legacyAllocations = Array.isArray(tables.project_fabric) ? tables.project_fabric! : []
+      let allocationCount = 0
+      for (const row of legacyAllocations) {
+        const cutId = cutIdByFabric.get(String(row.fabric_id))
+        if (!cutId) continue
+        insert('project_cut', { project_id: row.project_id, cut_id: cutId, length_mm_used: row.length_mm_used ?? null })
+        allocationCount += 1
+      }
+      counts.project_cut = allocationCount
     }
 
     // Photos: the metadata comes from the JSON, the bytes from the zip entries.

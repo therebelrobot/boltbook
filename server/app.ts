@@ -9,7 +9,7 @@ import { AccountService } from './auth'
 import { AuditLog } from './audit'
 import { SessionStore } from './sessions'
 import { UnlockRateLimiter } from './rateLimiter'
-import { FabricRepository, assertFabricInvariant } from './repositories/fabrics'
+import { FabricRepository } from './repositories/fabrics'
 import { PatternRepository } from './repositories/patterns'
 import { NotionRepository } from './repositories/notions'
 import { ThreadRepository, assertThreadInvariant } from './repositories/threads'
@@ -25,12 +25,14 @@ import { presentShoppingList, shoppingListText } from './shoppingList'
 import { projectCost, stashValue } from './costing'
 import {
   FABRIC_ALLOCATION_MEASURES,
+  FABRIC_CUT_MEASURES,
   FABRIC_MEASURES,
   REQUIREMENT_MEASURES,
   THREAD_ALLOCATION_MEASURES,
   THREAD_MEASURES,
   normalizeMeasures,
   parseUnits,
+  presentFabric,
   presentMeasures,
   presentShortfallLines,
   type MeasureSpec,
@@ -40,6 +42,7 @@ import type { StaticAsset } from './staticAssets'
 import { buildOtpauthUri } from './crypto/totp'
 import {
   allocationsInputSchema,
+  fabricCutInputSchema,
   fabricInputSchema,
   loginRequestSchema,
   notionInputSchema,
@@ -496,25 +499,44 @@ export function createApplication(dependencies: ApplicationDependencies) {
     const tag = context.req.query('tag')
     if (tag) filters.tag = tag
     const units = unitsOf(context)
-    return context.json(fabrics.list(filters).map((fabric) => presentMeasures(fabric, FABRIC_MEASURES, units)))
+    return context.json(fabrics.list(filters).map((fabric) => presentFabric(fabric, units)))
   })
 
   app.post('/api/fabrics', async (context) => {
     const input = await readMeasuredBody(context, fabricInputSchema, FABRIC_MEASURES)
-    assertFabricInvariant(input)
-    return context.json(presentMeasures(fabrics.create(input, nowIso()), FABRIC_MEASURES, unitsOf(context)), 201)
+    return context.json(presentFabric(fabrics.create(input, nowIso()), unitsOf(context)), 201)
   })
 
   app.get('/api/fabrics/:fabricId', (context) => {
     const fabric = fabrics.get(context.req.param('fabricId'))
     if (!fabric) throw new RecordNotFoundError('No such fabric.')
-    return context.json(presentMeasures(fabric, FABRIC_MEASURES, unitsOf(context)))
+    return context.json(presentFabric(fabric, unitsOf(context)))
   })
 
   app.put('/api/fabrics/:fabricId', async (context) => {
     const input = await readMeasuredBody(context, fabricInputSchema, FABRIC_MEASURES)
-    assertFabricInvariant(input)
-    return context.json(presentMeasures(fabrics.replace(context.req.param('fabricId'), input, nowIso()), FABRIC_MEASURES, unitsOf(context)))
+    return context.json(presentFabric(fabrics.replace(context.req.param('fabricId'), input, nowIso()), unitsOf(context)))
+  })
+
+  // Cuts — the physical pieces. Lengths, prices and acquisition dates live on
+  // the cut; the fabric's totals are derived from them. A cut cannot move to
+  // another fabric, so there is no endpoint that could.
+
+  app.post('/api/fabrics/:fabricId/cuts', async (context) => {
+    const input = await readMeasuredBody(context, fabricCutInputSchema, FABRIC_CUT_MEASURES)
+    return context.json(presentMeasures(fabrics.addCut(context.req.param('fabricId'), input, nowIso()), FABRIC_CUT_MEASURES, unitsOf(context)), 201)
+  })
+
+  app.put('/api/fabrics/:fabricId/cuts/:cutId', async (context) => {
+    const input = await readMeasuredBody(context, fabricCutInputSchema, FABRIC_CUT_MEASURES)
+    return context.json(
+      presentMeasures(fabrics.replaceCut(context.req.param('fabricId'), context.req.param('cutId'), input, nowIso()), FABRIC_CUT_MEASURES, unitsOf(context)),
+    )
+  })
+
+  app.delete('/api/fabrics/:fabricId/cuts/:cutId', (context) => {
+    fabrics.deleteCut(context.req.param('fabricId'), context.req.param('cutId'), nowIso())
+    return context.json({ ok: true })
   })
 
   app.delete('/api/fabrics/:fabricId', (context) => {

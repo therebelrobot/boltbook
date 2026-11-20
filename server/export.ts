@@ -19,6 +19,7 @@ type Row = Record<string, unknown>
  */
 const TABLES = [
   'fabric',
+  'fabric_cut',
   'pattern',
   'pattern_view',
   'pattern_requirement',
@@ -26,7 +27,7 @@ const TABLES = [
   'thread',
   'tool',
   'project',
-  'project_fabric',
+  'project_cut',
   'project_thread',
   'project_notion',
   'tag',

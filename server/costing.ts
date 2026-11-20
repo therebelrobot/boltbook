@@ -43,16 +43,20 @@ const totalsOf = (rows: Array<{ currency: unknown; costMinor: unknown }>): Curre
     .sort((a, b) => a.currency.localeCompare(b.currency))
 }
 
-/** What a project's allocations cost, summed from the records' own `cost_minor`. */
+/** What a project's allocations cost, summed from the cuts' own `cost_minor`. */
 export function projectCost(database: Database, projectId: string): ProjectCost | null {
   const project = database.prepare('SELECT title FROM project WHERE id = ?').get(projectId) as Row | undefined
   if (!project) return null
 
+  // The allocation names the cut, and the price lives on the cut — a sale
+  // remnant and a full-price bolt are told apart.
   const fabricRows = database
     .prepare(
-      `SELECT f.id AS target_id, f.name AS name, f.cost_minor AS cost, f.currency AS currency
-         FROM project_fabric a JOIN fabric f ON f.id = a.fabric_id
-        WHERE a.project_id = ? ORDER BY f.name ASC`,
+      `SELECT c.id AS target_id, f.name AS name, c.cost_minor AS cost, c.currency AS currency,
+              (SELECT COUNT(*) FROM fabric_cut WHERE fabric_id = f.id) AS cut_count,
+              c.position AS cut_position
+         FROM project_cut a JOIN fabric_cut c ON c.id = a.cut_id JOIN fabric f ON f.id = c.fabric_id
+        WHERE a.project_id = ? ORDER BY f.name ASC, c.position ASC`,
     )
     .all(projectId) as Row[]
   const threadRows = database
@@ -65,10 +69,11 @@ export function projectCost(database: Database, projectId: string): ProjectCost 
 
   const toLine = (kind: 'fabric' | 'thread') => (row: Row): CostLine | null => {
     if (row.cost === null || row.cost === undefined) return null
+    const suffix = kind === 'fabric' && Number(row.cut_count) > 1 ? ` — cut ${Number(row.cut_position) + 1}` : ''
     return {
       kind,
       targetId: String(row.target_id),
-      name: String(row.name),
+      name: `${String(row.name)}${suffix}`,
       costMinor: Number(row.cost),
       // A cost with no currency is shown but cannot join a total — a number
       // without a unit is not money.
@@ -83,10 +88,10 @@ export function projectCost(database: Database, projectId: string): ProjectCost 
   return { title: String(project.title), lines, totals: totalsOf(lines) }
 }
 
-/** What the whole stash is worth — fabric, thread and tools. Per currency. */
+/** What the whole stash is worth — the cuts, the thread and the tools. Per currency. */
 export function stashValue(database: Database): CurrencyTotal[] {
   const rows = [
-    ...(database.prepare('SELECT cost_minor, currency FROM fabric').all() as Row[]),
+    ...(database.prepare('SELECT cost_minor, currency FROM fabric_cut').all() as Row[]),
     ...(database.prepare('SELECT cost_minor, currency FROM thread').all() as Row[]),
     ...(database.prepare('SELECT cost_minor, currency FROM tool').all() as Row[]),
   ].map((row) => ({ costMinor: row.cost_minor, currency: row.currency }))

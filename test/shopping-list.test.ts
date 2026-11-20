@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { freshApp, json, put, readJson } from './helpers'
+import { fabricWithCut, freshApp, json, put, readJson } from './helpers'
 
 /**
  * The shortfall as a shopping list: short lines only, named, in the claim's own
@@ -19,9 +19,7 @@ interface Item {
 /** A project that is short of fabric, thread and a notion, all at once. */
 async function seedShortProject() {
   const app = await freshApp()
-  const fabric = await readJson<{ id: string }>(
-    await app.request('/api/fabrics', json({ name: 'Washed linen', colour: 'oatmeal', lengthMm: 1000, source: 'Fabricville' })),
-  )
+  const fabric = await fabricWithCut(app, { name: 'Washed linen', colour: 'oatmeal', source: 'Fabricville' }, { lengthMm: 1000 })
   const thread = await readJson<{ id: string }>(
     await app.request('/api/threads', json({ name: 'Mara 120', colour: 'ecru', lengthM: 100 })),
   )
@@ -33,7 +31,7 @@ async function seedShortProject() {
   )
   await app.request(`/api/projects/${project.id}/allocations`, {
     ...put({
-      fabrics: [{ fabricId: fabric.id, lengthMmUsed: 2800 }],
+      fabrics: [{ cutId: fabric.cutId, lengthMmUsed: 2800 }],
       threads: [{ threadId: thread.id, lengthMUsed: 400 }],
       notions: [{ notionId: notion.id, quantityUsed: 12 }],
     }),
@@ -55,14 +53,14 @@ test('a line the stash can cover is not on the list', async () => {
   const { app, projectId } = await seedShortProject()
   // Shrink only the thread claim below what the stash holds; it drops off the
   // list while the fabric and notion shortfalls stay.
-  const thread = await readJson<Array<{ id: string }>>(await app.request('/api/threads'))
-  const fabric = await readJson<Array<{ id: string }>>(await app.request('/api/fabrics'))
-  const notion = await readJson<Array<{ id: string }>>(await app.request('/api/notions'))
+  const [thread] = await readJson<Array<{ id: string }>>(await app.request('/api/threads'))
+  const [fabric] = await readJson<Array<{ cuts: Array<{ id: string }> }>>(await app.request('/api/fabrics'))
+  const [notion] = await readJson<Array<{ id: string }>>(await app.request('/api/notions'))
   await app.request(`/api/projects/${projectId}/allocations`, {
     ...put({
-      fabrics: [{ fabricId: fabric[0]!.id, lengthMmUsed: 2800 }],
-      threads: [{ threadId: thread[0]!.id, lengthMUsed: 100 }],
-      notions: [{ notionId: notion[0]!.id, quantityUsed: 12 }],
+      fabrics: [{ cutId: fabric!.cuts[0]!.id, lengthMmUsed: 2800 }],
+      threads: [{ threadId: thread!.id, lengthMUsed: 100 }],
+      notions: [{ notionId: notion!.id, quantityUsed: 12 }],
     }),
   })
   const { items } = await readJson<{ items: Item[] }>(await app.request(`/api/projects/${projectId}/shopping-list`))
@@ -72,10 +70,10 @@ test('a line the stash can cover is not on the list', async () => {
 
 test('a project the stash covers produces an empty list', async () => {
   const app = await freshApp()
-  const fabric = await readJson<{ id: string }>(await app.request('/api/fabrics', json({ name: 'Linen', lengthMm: 3000 })))
+  const fabric = await fabricWithCut(app, { name: 'Linen' }, { lengthMm: 3000 })
   const project = await readJson<{ id: string }>(await app.request('/api/projects', json({ title: 'Shirt', status: 'planned' })))
   await app.request(`/api/projects/${project.id}/allocations`, {
-    ...put({ fabrics: [{ fabricId: fabric.id, lengthMmUsed: 2800 }], threads: [], notions: [] }),
+    ...put({ fabrics: [{ cutId: fabric.cutId, lengthMmUsed: 2800 }], threads: [], notions: [] }),
   })
   const { items } = await readJson<{ items: Item[] }>(await app.request(`/api/projects/${project.id}/shopping-list`))
   assert.deepEqual(items, [])
