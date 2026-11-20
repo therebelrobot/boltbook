@@ -1,6 +1,6 @@
 # boltbook — Technical Design
 
-**Document version:** 1.2 · **Last updated:** 2026-11-20
+**Document version:** 1.3 · **Last updated:** 2026-11-20
 **Companion:** `product-brief.md`, `adr/0001-no-encryption-at-rest.md`
 **Status:** v1 built; v2 in progress — pattern PDFs, storage labels, tiled printing, local
 envelope OCR (v2-plan §5–§8) and photos on every record (§3) are built.
@@ -99,10 +99,25 @@ display.
 
 ```
 fabric(id PK, name, fibre, weight, colour, print_type, width_mm,
-       length_mm, original_length_mm, source, cost_minor, currency,
-       acquired_on, location, care, notes, created_at, updated_at)
-       -- v2: gains `role` (garment | lining | interfacing | interlining | canvas | backing |
-       --     muslin | other), one vocabulary with pattern_requirement.role (v2-plan §22)
+       source, location, care, notes, artist, repurchase_url,
+       created_at, updated_at)
+       -- BUILT 2026-11-20 (migration 11): artist + repurchase_url; the FTS
+       -- index was rebuilt for artist (a link, not a question: the URL is not
+       -- indexed). role (garment | lining | …) is planned (v2-plan §22) and
+       -- stays out of the index — it is a filter.
+       -- BUILT 2026-11-20 (migration 12, v2-plan §15): the lengths, price and
+       -- acquisition date moved OFF the fabric onto fabric_cut; the fabric is
+       -- the cloth, and every total is a SUM over its cuts.
+
+fabric_cut(id PK, fabric_id FK→fabric ON DELETE CASCADE, position,
+           length_mm, original_length_mm, cost_minor, currency,
+           acquired_on, created_at, updated_at)
+           -- the physical piece: the 3 m bolt, or the 2 m remnant of the same
+           -- linen. A cut cannot move to another fabric; the last cut cannot
+           -- be deleted (a fabric keeps at least one piece). There is no
+           -- stored fabric-level length: the meter, the row, the filter and
+           -- the shortfall all read the SUM over cuts. Wash state is
+           -- v2-plan §17 (pre/post-wash), not built yet.
 
 fabric_photo(id PK, fabric_id FK→fabric ON DELETE CASCADE, position,
              content_type, bytes BLOB, width_px, height_px)
@@ -143,8 +158,13 @@ project(id PK, title, pattern_view_id FK→pattern_view NULL, status,
         started_on, finished_on, notes, created_at, updated_at)
         -- status: planned | cutting | sewing | done | abandoned
 
-project_fabric(project_id FK, fabric_id FK, length_mm_used INTEGER,
-               PRIMARY KEY(project_id, fabric_id))
+project_cut(project_id FK→project ON DELETE CASCADE,
+            cut_id FK→fabric_cut ON DELETE CASCADE, length_mm_used INTEGER,
+            PRIMARY KEY(project_id, cut_id))
+            -- BUILT 2026-11-20 (migration 12, v2-plan §15): replaces
+            -- project_fabric. A project names the cut it took — the piece the
+            -- person physically cut — and consuming decrements only that cut.
+            -- What other active projects reserve is summed per cut.
 
 project_notion(project_id FK, notion_id FK, quantity_used REAL,
                PRIMARY KEY(project_id, notion_id))
@@ -167,11 +187,13 @@ account(singleton_id INTEGER PK CHECK(=1), created_at, scrypt_n, scrypt_r, scryp
 audit_log(id INTEGER PK AUTOINCREMENT, at, event, ip_address, user_agent)
 ```
 
-`length_mm` on `fabric` is **remaining**; `original_length_mm` is what was bought.
-`project_fabric.length_mm_used` is the record of what each project took.
+`length_mm` on `fabric_cut` is that piece's **remaining**; `original_length_mm` is what it was
+bought as. The fabric has no length of its own: every total — the meter, the row, the
+`?minLengthMm=` filter, the search hit — is a `SUM` over its cuts, derived, never stored.
+`project_cut.length_mm_used` is the record of what each project took, and of which piece.
 
-Indexes: `fabric(fibre)`, `fabric(location)`, `pattern(brand)`, `project(status)`,
-`pattern_view(pattern_id)`, plus the FTS tables in §6.
+Indexes: `fabric(fibre)`, `fabric(location)`, `fabric_cut(fabric_id, position)`, `pattern(brand)`,
+`project(status)`, `pattern_view(pattern_id)`, plus the FTS tables in §6.
 
 ## 4. Identity, auth, access
 
@@ -221,6 +243,9 @@ POST   /api/fabrics
 GET    /api/fabrics/:id
 PUT    /api/fabrics/:id
 DELETE /api/fabrics/:id
+POST   /api/fabrics/:id/cuts           add a piece
+PUT    /api/fabrics/:id/cuts/:cutId    the piece's lengths, price, acquisition
+DELETE /api/fabrics/:id/cuts/:cutId   refused on the last cut (409)
 POST   /api/photos/:entityType/:entityId        multipart, one photo
 DELETE /api/photos/:entityType/:entityId/:photoId
 GET    /api/photos/:entityType/:entityId/:photoId   raw bytes, immutable cache
