@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { navigate } from '../router'
 import { api, photoUrl } from '../api'
 import { formatQuantity, joinMeta } from '../format'
 import { formatStored } from '../units'
@@ -84,7 +85,7 @@ export function LocationScreen({ name }: LocationScreenProps) {
         <>
           <Section title="Fabric" count={at.fabrics.length}>
             {at.fabrics.map((fabric) => (
-              <div className="row static" key={fabric.id}>
+              <button type="button" className="row" key={fabric.id} onClick={() => navigate('fabric', fabric.id)}>
                 {fabric.photos[0] ? (
                   <img
                     className="swatch"
@@ -112,13 +113,13 @@ export function LocationScreen({ name }: LocationScreenProps) {
                   {formatStored(fabric.lengthMm, 'fabricLength', unit)}
                   <span className="sub">left</span>
                 </span>
-              </div>
+              </button>
             ))}
           </Section>
 
           <Section title="Thread" count={at.threads.length}>
             {at.threads.map((thread) => (
-              <div className="row static" key={thread.id}>
+              <button type="button" className="row" key={thread.id} onClick={() => navigate('thread', thread.id)}>
                 {thread.photos[0] ? (
                   <img
                     className="swatch"
@@ -139,13 +140,13 @@ export function LocationScreen({ name }: LocationScreenProps) {
                   </span>
                 </span>
                 <span className="right">{formatStored(thread.lengthM, 'threadLength', unit)}</span>
-              </div>
+              </button>
             ))}
           </Section>
 
           <Section title="Notions" count={at.notions.length}>
             {at.notions.map((notion) => (
-              <div className="row static" key={notion.id}>
+              <button type="button" className="row" key={notion.id} onClick={() => navigate('notion', notion.id)}>
                 {notion.photos[0] ? (
                   <img
                     className="swatch"
@@ -166,13 +167,13 @@ export function LocationScreen({ name }: LocationScreenProps) {
                   </span>
                 </span>
                 <span className="right">{formatQuantity(notion.quantity, notion.unit)}</span>
-              </div>
+              </button>
             ))}
           </Section>
 
           <Section title="Tools" count={at.tools.length}>
             {at.tools.map((tool) => (
-              <div className="row static" key={tool.id}>
+              <button type="button" className="row" key={tool.id} onClick={() => navigate('tool', tool.id)}>
                 {tool.photos[0] ? (
                   <img
                     className="swatch"
@@ -194,7 +195,7 @@ export function LocationScreen({ name }: LocationScreenProps) {
                   {tool.needsAttention && <span className="warn-line">Needs attention</span>}
                 </span>
                 <span className="right">{formatQuantity(tool.quantity)}</span>
-              </div>
+              </button>
             ))}
           </Section>
         </>

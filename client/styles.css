@@ -834,6 +834,40 @@ a.button {
   background: var(--surface);
 }
 
+/* ---------- record detail ---------- */
+
+.detail-photos {
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 0.75rem;
+}
+.detail-head {
+  margin: 0.75rem 0 0.25rem;
+}
+.detail-head h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+.detail-head .tags {
+  margin: 0.25rem 0 0;
+}
+.detail-fields {
+  margin: 0.5rem 0 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+}
+.detail-field dt {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.detail-field dd {
+  margin: 0.1rem 0 0;
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- shopping list ---------- */
 
 .shopping-list {

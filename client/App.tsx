@@ -9,7 +9,9 @@ import { PatternsScreen } from './screens/PatternsScreen'
 import { ProjectsScreen } from './screens/ProjectsScreen'
 import { SearchScreen } from './screens/SearchScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
+import { StashDetailScreen } from './screens/StashDetailScreen'
 import { StashScreen } from './screens/StashScreen'
+import { STASH_KINDS } from './fields'
 import { navigate, tabNames, useRoute, type TabName } from './router'
 import { UnitProvider } from './unitPreference'
 import type { AuthStatus } from '../shared/model'
@@ -43,9 +45,12 @@ export function App() {
 
   const activeTab: TabName = (tabNames as readonly string[]).includes(route.name) ? (route.name as TabName) : 'stash'
   const locationName = route.name === 'location' ? route.id : null
-  const heading = locationName
-    ? { title: 'Location', subtitle: locationName }
-    : TITLES[activeTab]
+  const detailKind = STASH_KINDS.find((entry) => entry.key === route.name) ?? null
+  const heading = detailKind
+    ? { title: detailKind.singular }
+    : locationName
+      ? { title: 'Location', subtitle: locationName }
+      : TITLES[activeTab]
 
   if (unreachable) {
     return (
@@ -66,7 +71,9 @@ export function App() {
           activeTab={activeTab}
           onOpenSettings={() => setSettingsOpen(true)}
         >
-          {locationName ? (
+          {detailKind && route.id ? (
+            <StashDetailScreen key={`${detailKind.key}-${route.id}`} kind={detailKind.key} id={route.id} />
+          ) : locationName ? (
             <LocationScreen key={locationName} name={locationName} />
           ) : (
             <>

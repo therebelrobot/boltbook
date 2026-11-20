@@ -100,3 +100,19 @@ export const PROJECT_FIELDS: readonly FieldSpec[] = [
   { name: 'notes', label: 'Notes', kind: 'textarea' },
   { name: 'tags', label: 'Tags', kind: 'tags' },
 ]
+
+/** The four stash kinds share one list shape and one detail shape. */
+export interface StashKindConfig {
+  key: 'fabric' | 'thread' | 'notion' | 'tool'
+  label: string
+  path: string
+  fields: readonly FieldSpec[]
+  singular: string
+}
+
+export const STASH_KINDS: readonly StashKindConfig[] = [
+  { key: 'fabric', label: 'Fabric', path: '/api/fabrics', fields: FABRIC_FIELDS, singular: 'Fabric' },
+  { key: 'thread', label: 'Thread', path: '/api/threads', fields: THREAD_FIELDS, singular: 'Thread' },
+  { key: 'notion', label: 'Notions', path: '/api/notions', fields: NOTION_FIELDS, singular: 'Notion' },
+  { key: 'tool', label: 'Tools', path: '/api/tools', fields: TOOL_FIELDS, singular: 'Tool' },
+]
