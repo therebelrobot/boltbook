@@ -50,6 +50,8 @@ import {
   projectInputSchema,
   setupRequestSchema,
   tagInputSchema,
+  tagMergeSchema,
+  tagRenameSchema,
   threadInputSchema,
   toolInputSchema,
   totpConfirmRequestSchema,
@@ -907,6 +909,18 @@ export function createApplication(dependencies: ApplicationDependencies) {
   app.post('/api/tags', async (context) => {
     const input = await readJsonBody(context, tagInputSchema)
     return context.json(tags.create(input.name, nowIso()), 201)
+  })
+
+  // Tag hygiene: rename in place (the links move with the id), or merge one tag
+  // into another and drop it.
+  app.patch('/api/tags/:tagId', async (context) => {
+    const input = await readJsonBody(context, tagRenameSchema)
+    return context.json(tags.rename(context.req.param('tagId'), input.name))
+  })
+
+  app.post('/api/tags/:tagId/merge', async (context) => {
+    const input = await readJsonBody(context, tagMergeSchema)
+    return context.json(tags.merge(context.req.param('tagId'), input.into))
   })
 
   app.delete('/api/tags/:tagId', (context) => {

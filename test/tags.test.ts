@@ -125,3 +125,96 @@ test('tags are listed most-used first', async () => {
   const tags = await readJson<Tag[]>(await app.request('/api/tags'))
   assert.equal(tags[0]!.name, 'common')
 })
+
+const patch = (body: unknown): RequestInit => ({
+  method: 'PATCH',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+})
+
+test('renaming a tag moves every link with it', async () => {
+  const app = await freshApp()
+  await app.request('/api/fabrics', json({ name: 'One', tags: ['linnen'] }))
+  await app.request('/api/patterns', json({ name: 'Two', tags: ['linnen'] }))
+  const [tag] = await readJson<Tag[]>(await app.request('/api/tags'))
+
+  const renamed = await readJson<Tag>(await app.request(`/api/tags/${tag!.id}`, patch({ name: 'linen' })))
+  assert.equal(renamed.name, 'linen')
+  assert.equal(renamed.usageCount, 2)
+
+  // The records follow the name, wherever they live.
+  const fabrics = await readJson<Tagged[]>(await app.request('/api/fabrics'))
+  assert.deepEqual(fabrics[0]!.tags, ['linen'])
+  const patterns = await readJson<Tagged[]>(await app.request('/api/patterns'))
+  assert.deepEqual(patterns[0]!.tags, ['linen'])
+
+  // And the filter follows too.
+  const filtered = await readJson<Tagged[]>(await app.request('/api/fabrics?tag=linen'))
+  assert.equal(filtered.length, 1)
+})
+
+test('renaming onto a name another tag holds is a conflict, case-insensitively', async () => {
+  const app = await freshApp()
+  await app.request('/api/fabrics', json({ name: 'One', tags: ['linen'] }))
+  await app.request('/api/fabrics', json({ name: 'Two', tags: ['linnen'] }))
+  const tags = await readJson<Tag[]>(await app.request('/api/tags'))
+  const linnen = tags.find((tag) => tag.name === 'linnen')!
+
+  const response = await app.request(`/api/tags/${linnen.id}`, patch({ name: 'Linen' }))
+  assert.equal(response.status, 409)
+  assert.equal((await readJson<{ error: string }>(response)).error, 'conflict')
+
+  // Nothing changed.
+  const after = await readJson<Tag[]>(await app.request('/api/tags'))
+  assert.deepEqual(after.map((tag) => tag.name).sort(), ['linen', 'linnen'])
+})
+
+test('a case-only rename stays one tag', async () => {
+  const app = await freshApp()
+  await app.request('/api/fabrics', json({ name: 'One', tags: ['linen'] }))
+  const [tag] = await readJson<Tag[]>(await app.request('/api/tags'))
+
+  const renamed = await readJson<Tag>(await app.request(`/api/tags/${tag!.id}`, patch({ name: 'Linen' })))
+  assert.equal(renamed.name, 'Linen')
+  assert.equal(renamed.usageCount, 1)
+  assert.equal((await readJson<Tag[]>(await app.request('/api/tags'))).length, 1)
+})
+
+test('merging moves every link and retires the source', async () => {
+  const app = await freshApp()
+  await app.request('/api/fabrics', json({ name: 'One', tags: ['linnen'] }))
+  await app.request('/api/fabrics', json({ name: 'Two', tags: ['linnen', 'linen'] }))
+  const tags = await readJson<Tag[]>(await app.request('/api/tags'))
+  const source = tags.find((tag) => tag.name === 'linnen')!
+  const target = tags.find((tag) => tag.name === 'linen')!
+
+  const merged = await readJson<Tag>(await app.request(`/api/tags/${source.id}/merge`, json({ into: target.id })))
+  assert.equal(merged.name, 'linen')
+  // Record Two carried both; the duplicate link is ignored, not double-counted.
+  assert.equal(merged.usageCount, 2)
+
+  const after = await readJson<Tag[]>(await app.request('/api/tags'))
+  assert.deepEqual(after.map((tag) => tag.name), ['linen'])
+  const fabrics = await readJson<Tagged[]>(await app.request('/api/fabrics'))
+  assert.deepEqual(fabrics.map((fabric) => fabric.tags), [['linen'], ['linen']])
+})
+
+test('merging a tag into itself is refused', async () => {
+  const app = await freshApp()
+  await app.request('/api/fabrics', json({ name: 'One', tags: ['linen'] }))
+  const [tag] = await readJson<Tag[]>(await app.request('/api/tags'))
+
+  const response = await app.request(`/api/tags/${tag!.id}/merge`, json({ into: tag!.id }))
+  assert.equal(response.status, 400)
+  assert.equal((await readJson<Tag[]>(await app.request('/api/tags'))).length, 1)
+})
+
+test('merging into a missing tag is a 404, and the source survives', async () => {
+  const app = await freshApp()
+  await app.request('/api/fabrics', json({ name: 'One', tags: ['linen'] }))
+  const [tag] = await readJson<Tag[]>(await app.request('/api/tags'))
+
+  const response = await app.request(`/api/tags/${tag!.id}/merge`, json({ into: 'ghost' }))
+  assert.equal(response.status, 404)
+  assert.equal((await readJson<Tag[]>(await app.request('/api/tags'))).length, 1)
+})

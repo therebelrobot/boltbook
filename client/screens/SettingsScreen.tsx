@@ -3,7 +3,7 @@ import { api, restoreExport, signOut } from '../api'
 import { Sheet } from '../components/Sheet'
 import { joinMeta } from '../format'
 import { useUnit } from '../unitPreference'
-import type { Status } from '../../shared/model'
+import type { Status, Tag } from '../../shared/model'
 
 interface AuditEntry {
   at: string
@@ -16,6 +16,178 @@ interface SettingsScreenProps {
   onClose: () => void
   onOpenLabels: () => void
   onSignedOut: () => void
+}
+
+/**
+ * Tag hygiene. The vocabulary converges by design but still drifts — `linen`,
+ * `Linen`, `linnen` — and editing every record by hand is the only fix without
+ * this. Rename moves every link (the id does not change); a merge folds one tag
+ * into another; the unused can go.
+ */
+function TagManager() {
+  const [tags, setTags] = useState<Tag[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
+  const [merging, setMerging] = useState<string | null>(null)
+  const [mergeTarget, setMergeTarget] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const reload = async (): Promise<void> => {
+    try {
+      setTags(await api<Tag[]>('/api/tags'))
+      setError(null)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not load the tags.')
+    }
+  }
+
+  useEffect(() => {
+    void reload()
+  }, [])
+
+  const act = async (work: () => Promise<string>): Promise<void> => {
+    setBusy(true)
+    try {
+      setNote(await work())
+      setError(null)
+      setRenaming(null)
+      setMerging(null)
+      setMergeTarget('')
+      await reload()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'That did not work.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const rename = (id: string, name: string): void =>
+    void act(async () => {
+      await api(`/api/tags/${id}`, { method: 'PATCH', body: { name } })
+      return `Renamed to ${name.trim()}.`
+    })
+
+  const merge = (id: string, into: string): void =>
+    void act(async () => {
+      const target = tags?.find((tag) => tag.id === into)?.name ?? 'another tag'
+      await api(`/api/tags/${id}/merge`, { method: 'POST', body: { into } })
+      return `Merged into ${target}.`
+    })
+
+  const remove = (id: string, name: string): void => {
+    if (!window.confirm(`Delete the tag "${name}"? The records themselves stay.`)) return
+    void act(async () => {
+      await api(`/api/tags/${id}`, { method: 'DELETE' })
+      return `Deleted ${name}.`
+    })
+  }
+
+  const deleteUnused = (): void => {
+    const unused = (tags ?? []).filter((tag) => tag.usageCount === 0)
+    if (unused.length === 0) return
+    if (!window.confirm(`Delete ${unused.length} unused tag${unused.length === 1 ? '' : 's'}? The records themselves stay.`)) return
+    void act(async () => {
+      for (const tag of unused) await api(`/api/tags/${tag.id}`, { method: 'DELETE' })
+      return `Deleted ${unused.length} unused tag${unused.length === 1 ? '' : 's'}.`
+    })
+  }
+
+  const unusedCount = (tags ?? []).filter((tag) => tag.usageCount === 0).length
+
+  return (
+    <>
+      {tags === null && !error && <p className="muted">Loading…</p>}
+      {error && <p className="error">{error}</p>}
+      {note && <p className="muted">{note}</p>}
+
+      {tags !== null && tags.length === 0 && <p className="muted">No tags yet.</p>}
+
+      {tags !== null && tags.length > 0 && (
+        <div className="card">
+          {tags.map((tag) => (
+            <div className="row" key={tag.id} style={{ cursor: 'default', minHeight: 48, flexWrap: merging === tag.id ? 'wrap' : undefined }}>
+              {renaming?.id === tag.id ? (
+                <span className="body">
+                  <input
+                    value={renaming.name}
+                    autoFocus
+                    onChange={(event) => setRenaming({ id: tag.id, name: event.target.value })}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') rename(tag.id, renaming.name)
+                      if (event.key === 'Escape') setRenaming(null)
+                    }}
+                  />
+                </span>
+              ) : (
+                <span className="body">
+                  <span className="title">#{tag.name}</span>
+                  <span className="meta">
+                    {tag.usageCount === 0 ? 'unused' : `on ${tag.usageCount} record${tag.usageCount === 1 ? '' : 's'}`}
+                  </span>
+                </span>
+              )}
+
+              {merging === tag.id ? (
+                <span className="inline-actions" style={{ flex: '1 1 100%' }}>
+                  <select
+                    aria-label="Merge into"
+                    value={mergeTarget}
+                    style={{ flex: 1 }}
+                    onChange={(event) => setMergeTarget(event.target.value)}
+                  >
+                    <option value="">—</option>
+                    {tags!.filter((other) => other.id !== tag.id).map((other) => (
+                      <option key={other.id} value={other.id}>
+                        {other.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="button plain" disabled={busy || !mergeTarget} onClick={() => merge(tag.id, mergeTarget)}>
+                    Merge
+                  </button>
+                  <button type="button" className="button plain" onClick={() => setMerging(null)}>
+                    Cancel
+                  </button>
+                </span>
+              ) : renaming?.id === tag.id ? (
+                <span className="inline-actions">
+                  <button type="button" className="button plain" disabled={busy} onClick={() => rename(tag.id, renaming.name)}>
+                    Save
+                  </button>
+                  <button type="button" className="button plain" onClick={() => setRenaming(null)}>
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <span className="inline-actions">
+                  <button type="button" className="button plain" onClick={() => setRenaming({ id: tag.id, name: tag.name })}>
+                    Rename
+                  </button>
+                  {tags!.length > 1 && (
+                    <button type="button" className="button plain" onClick={() => setMerging(tag.id)}>
+                      Merge
+                    </button>
+                  )}
+                  {tag.usageCount === 0 && (
+                    <button type="button" className="button plain" onClick={() => remove(tag.id, tag.name)}>
+                      Delete
+                    </button>
+                  )}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {unusedCount > 0 && (
+        <button type="button" className="button" disabled={busy} onClick={deleteUnused}>
+          Delete {unusedCount} unused tag{unusedCount === 1 ? '' : 's'}
+        </button>
+      )}
+    </>
+  )
 }
 
 export function SettingsScreen({ onClose, onOpenLabels, onSignedOut }: SettingsScreenProps) {
@@ -143,7 +315,14 @@ export function SettingsScreen({ onClose, onOpenLabels, onSignedOut }: SettingsS
         </button>
       </div>
 
-      <h3 style={{ fontSize: '0.9375rem' }}>Storage labels</h3>
+      <h3 style={{ fontSize: '0.9375rem' }}>Tags</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        The vocabulary drifts — linen, Linen, linnen. Renaming moves every record with it; a merge
+        folds one tag into another; unused tags can go.
+      </p>
+      <TagManager />
+
+      <h3 style={{ fontSize: '0.9375rem', marginTop: '1.25rem' }}>Storage labels</h3>
       <p className="muted" style={{ marginTop: 0 }}>
         A printable sheet of QR labels, one per location. Scanning one opens everything stored
         there — fabric, thread, notions and tools together.
