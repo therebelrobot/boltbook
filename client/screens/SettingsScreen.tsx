@@ -190,6 +190,15 @@ function TagManager() {
   )
 }
 
+/** Money is shown in its own currency, major units; nothing is ever converted. */
+const moneyLabel = (minor: number, currency: string): string => {
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(minor / 100)
+  } catch {
+    return `${(minor / 100).toFixed(2)} ${currency}`
+  }
+}
+
 export function SettingsScreen({ onClose, onOpenLabels, onSignedOut }: SettingsScreenProps) {
   const { unit, setUnit } = useUnit()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -278,28 +287,43 @@ export function SettingsScreen({ onClose, onOpenLabels, onSignedOut }: SettingsS
   return (
     <Sheet title="Settings" onClose={onClose}>
       {summary && (
-        <div className="counts">
-          <div className="metric">
-            <b>{summary.fabricCount}</b>
-            <span>fabrics</span>
+        <>
+          <div className="counts">
+            <div className="metric">
+              <b>{summary.fabricCount}</b>
+              <span>fabrics</span>
+            </div>
+            <div className="metric">
+              <b>{summary.patternCount}</b>
+              <span>patterns</span>
+            </div>
+            <div className="metric">
+              <b>{summary.threadCount}</b>
+              <span>threads</span>
+            </div>
+            <div className="metric">
+              <b>{summary.notionCount + summary.toolCount}</b>
+              <span>notions &amp; tools</span>
+            </div>
+            <div className="metric">
+              <b>{summary.projectCount}</b>
+              <span>projects</span>
+            </div>
           </div>
-          <div className="metric">
-            <b>{summary.patternCount}</b>
-            <span>patterns</span>
-          </div>
-          <div className="metric">
-            <b>{summary.threadCount}</b>
-            <span>threads</span>
-          </div>
-          <div className="metric">
-            <b>{summary.notionCount + summary.toolCount}</b>
-            <span>notions &amp; tools</span>
-          </div>
-          <div className="metric">
-            <b>{summary.projectCount}</b>
-            <span>projects</span>
-          </div>
-        </div>
+          {summary.stashValue.length > 0 && (
+            <p className="muted" style={{ marginTop: '0.5rem' }}>
+              The stash:{' '}
+              {summary.stashValue.map((total, index) => (
+                <span key={total.currency}>
+                  {index > 0 && ' + '}
+                  <b>{moneyLabel(total.minor, total.currency)}</b>
+                  <span> {total.currency}</span>
+                </span>
+              ))}
+              {summary.stashValue.length > 1 && <span> — each currency its own total</span>}
+            </p>
+          )}
+        </>
       )}
 
       <h3 style={{ fontSize: '0.9375rem' }}>Units</h3>

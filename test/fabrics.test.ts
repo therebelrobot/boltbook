@@ -14,6 +14,8 @@ test('an empty instance reports zero of everything', async () => {
     threadCount: 0,
     toolCount: 0,
     projectCount: 0,
+    // Nothing costs anything yet, so the stash is worth no total at all.
+    stashValue: [],
   })
 })
 

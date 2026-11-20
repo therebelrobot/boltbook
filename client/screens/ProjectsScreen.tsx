@@ -240,6 +240,76 @@ const GROUP_LABELS: Record<ShoppingListItem['kind'], string> = {
   notion: 'Notions',
 }
 
+interface CostLine {
+  kind: 'fabric' | 'thread'
+  targetId: string
+  name: string
+  costMinor: number
+  currency: string
+}
+
+interface ProjectCost {
+  title: string
+  lines: CostLine[]
+  totals: Array<{ currency: string; minor: number }>
+}
+
+/** Money is shown in its own currency, major units; nothing is ever converted. */
+const moneyLabel = (minor: number, currency: string): string => {
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(minor / 100)
+  } catch {
+    return `${(minor / 100).toFixed(2)} ${currency}`
+  }
+}
+
+/** What the allocation cost, from the records' own cost_minor — per currency, never mixed. */
+function CostSummary({ project }: { project: Project }) {
+  const [cost, setCost] = useState<ProjectCost | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setCost(null)
+    api<ProjectCost>(`${PATHS}/${project.id}/cost`)
+      .then((result) => {
+        if (!cancelled) setCost(result)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [project.id])
+
+  return (
+    <div className="shopping-list">
+      <span className="label" style={{ display: 'block', fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+        Cost
+      </span>
+      {cost === null ? null : cost.totals.length === 0 ? (
+        <p className="muted">No costs recorded. Fabric and thread carry a price; notions do not.</p>
+      ) : (
+        <>
+          <p style={{ margin: '0.25rem 0 0.5rem' }}>
+            {cost.totals.map((total) => (
+              <span key={total.currency} style={{ marginRight: '0.75rem' }}>
+                <b>{moneyLabel(total.minor, total.currency)}</b>
+                <span className="muted"> {total.currency}</span>
+              </span>
+            ))}
+          </p>
+          <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
+            {cost.lines.map((line) => (
+              <li key={`${line.kind}-${line.targetId}`}>
+                {line.name} <span className="muted">{moneyLabel(line.costMinor, line.currency)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  )
+}
+
 const KIND_ORDER: readonly ShoppingListItem['kind'][] = ['fabric', 'thread', 'notion']
 
 /**
@@ -511,6 +581,7 @@ export function ProjectsScreen() {
             <>
               <AllocationEditor project={record} onChanged={() => void reload()} />
               <ShoppingList project={record} />
+              <CostSummary project={record} />
             </>
           ) : (
             <p className="muted">Save the project, then allocate fabric, thread and notions.</p>
