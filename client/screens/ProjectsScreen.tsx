@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react'
-import { api } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import { api, photoUrl, uploadPhoto } from '../api'
 import { useCollection } from '../useCollection'
 import { EntitySheet } from '../components/EntitySheet'
+import { PhotoField } from '../components/PhotoField'
 import { useToast } from '../components/Toast'
 import { PROJECT_FIELDS } from '../fields'
 import { formatQuantity, joinMeta } from '../format'
 import { formatStored } from '../units'
 import type { LengthUnit } from '../units'
 import { useUnit } from '../unitPreference'
-import type { Notion, ProjectAllocations, ShortfallLine, Thread, Fabric } from '../../shared/model'
+import { preparePhoto } from '../photo'
+import type { Notion, Photo, ProjectAllocations, ShortfallLine, Thread, Fabric } from '../../shared/model'
 
 interface Project {
   id: string
   title: string
   status: string
   startedOn: string | null
+  notes: string | null
+  photos: Photo[]
   tags: string[]
   allocations: ProjectAllocations
 }
@@ -233,10 +237,45 @@ export function ProjectsScreen() {
   const toast = useToast()
   const [sheet, setSheet] = useState<{ mode: 'create' } | { mode: 'edit'; id: string } | null>(null)
   const record = sheet?.mode === 'edit' ? items?.find((item) => item.id === sheet.id) ?? null : null
+  // A held photo while creating, uploaded once the project exists.
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const photoTargetRef = useRef<string | null>(null)
+
+  const requestPhoto = (entityId: string | null): void => {
+    photoTargetRef.current = entityId
+    setPhotoError(null)
+    photoInputRef.current?.click()
+  }
+
+  const onPhotoChosen = async (file: File | null): Promise<void> => {
+    if (!file) return
+    const target = photoTargetRef.current
+    if (!target) {
+      setPendingPhoto(file)
+      return
+    }
+    setPhotoError(null)
+    try {
+      const prepared = await preparePhoto(file)
+      await uploadPhoto('project', target, prepared.blob, prepared.widthPx, prepared.heightPx)
+      await reload()
+    } catch (caught) {
+      setPhotoError(caught instanceof Error ? caught.message : 'Could not add the photo.')
+    }
+  }
 
   const save = async (values: Record<string, unknown>): Promise<void> => {
     if (sheet?.mode === 'edit') await api(`${PATHS}/${sheet.id}`, { method: 'PUT', body: values })
-    else await api(PATHS, { method: 'POST', body: values })
+    else {
+      const created = await api<{ id: string }>(PATHS, { method: 'POST', body: values })
+      if (pendingPhoto) {
+        const prepared = await preparePhoto(pendingPhoto)
+        await uploadPhoto('project', created.id, prepared.blob, prepared.widthPx, prepared.heightPx)
+        setPendingPhoto(null)
+      }
+    }
     await reload()
   }
 
@@ -263,6 +302,19 @@ export function ProjectsScreen() {
         <div className="card">
           {items.map((project) => (
             <button type="button" className="row" key={project.id} onClick={() => setSheet({ mode: 'edit', id: project.id })}>
+              {project.photos[0] ? (
+                <img
+                  className="swatch"
+                  src={photoUrl(project.photos[0].entityType, project.photos[0].entityId, project.photos[0].id)}
+                  alt=""
+                  width={44}
+                  height={44}
+                />
+              ) : (
+                <span className="swatch" aria-hidden="true">
+                  {project.title.slice(0, 2)}
+                </span>
+              )}
               <span className="body">
                 <span className="title">{project.title}</span>
                 <span className="meta">
@@ -285,6 +337,19 @@ export function ProjectsScreen() {
         </button>
       )}
 
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null
+          event.target.value = ''
+          void onPhotoChosen(file)
+        }}
+      />
+
       {sheet && (
         <EntitySheet
           key={sheet.mode === 'edit' ? sheet.id : 'new'}
@@ -293,7 +358,24 @@ export function ProjectsScreen() {
           record={record as Record<string, unknown> | null}
           onSave={save}
           onDelete={sheet.mode === 'edit' ? remove : undefined}
-          onClose={() => setSheet(null)}
+          onClose={() => {
+            setSheet(null)
+            setPendingPhoto(null)
+          }}
+          leading={
+            <>
+              <PhotoField
+                entityType="project"
+                entityId={sheet.mode === 'edit' ? sheet.id : null}
+                photos={record?.photos ?? []}
+                pendingFile={pendingPhoto}
+                onPendingFile={setPendingPhoto}
+                onChanged={() => void reload()}
+                onRequestPhoto={requestPhoto}
+              />
+              {photoError && <p className="error">{photoError}</p>}
+            </>
+          }
         >
           {sheet.mode === 'edit' && record ? (
             <AllocationEditor project={record} onChanged={() => void reload()} />

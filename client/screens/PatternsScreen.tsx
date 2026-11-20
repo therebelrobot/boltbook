@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
-import { api, patternThumbnailUrl } from '../api'
+import { api, patternThumbnailUrl, photoUrl, uploadPhoto } from '../api'
 import { useCollection } from '../useCollection'
 import { EntitySheet } from '../components/EntitySheet'
 import { PatternFileField } from '../components/PatternFileField'
+import { PhotoField } from '../components/PhotoField'
 import { Sheet } from '../components/Sheet'
 import { ViewsEditor } from '../components/ViewsEditor'
 import { useToast } from '../components/Toast'
@@ -77,6 +78,11 @@ export function PatternsScreen() {
   const scanRun = useRef(0)
   const scanWorker = useRef<OcrWorkerHandle | null>(null)
   const scanPreview = useRef<string | null>(null)
+  // The cover photo: held while creating, uploaded once the pattern exists.
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const photoTargetRef = useRef<string | null>(null)
 
   const editRecord = sheet?.mode === 'edit' ? (items?.find((item) => item.id === sheet.id) ?? null) : null
   const record = sheet?.mode === 'scan' && scan?.phase === 'review' ? scan.suggestion : editRecord
@@ -141,6 +147,30 @@ export function PatternsScreen() {
     }
   }
 
+  const requestPhoto = (entityId: string | null): void => {
+    photoTargetRef.current = entityId
+    setPhotoError(null)
+    photoInputRef.current?.click()
+  }
+
+  const onPhotoChosen = async (file: File | null): Promise<void> => {
+    if (!file) return
+    const target = photoTargetRef.current
+    if (!target) {
+      // Creating: hold it until the pattern exists to attach it to.
+      setPendingPhoto(file)
+      return
+    }
+    setPhotoError(null)
+    try {
+      const prepared = await preparePhoto(file)
+      await uploadPhoto('pattern', target, prepared.blob, prepared.widthPx, prepared.heightPx)
+      await reload()
+    } catch (caught) {
+      setPhotoError(caught instanceof Error ? caught.message : 'Could not add the photo.')
+    }
+  }
+
   const save = async (values: Record<string, unknown>): Promise<void> => {
     if (sheet?.mode === 'edit') {
       await api(`${PATHS}/${sheet.id}`, { method: 'PUT', body: values })
@@ -164,7 +194,12 @@ export function PatternsScreen() {
       return
     }
 
-    await api(PATHS, { method: 'POST', body: values })
+    const created = await api<{ id: string }>(PATHS, { method: 'POST', body: values })
+    if (pendingPhoto) {
+      const prepared = await preparePhoto(pendingPhoto)
+      await uploadPhoto('pattern', created.id, prepared.blob, prepared.widthPx, prepared.heightPx)
+      setPendingPhoto(null)
+    }
     await reload()
   }
 
@@ -215,7 +250,15 @@ export function PatternsScreen() {
                 key={pattern.id}
                 onClick={() => setSheet({ mode: 'edit', id: pattern.id })}
               >
-                {pattern.file ? (
+                {pattern.photos[0] ? (
+                  <img
+                    className="swatch"
+                    src={photoUrl(pattern.photos[0].entityType, pattern.photos[0].entityId, pattern.photos[0].id)}
+                    alt=""
+                    width={44}
+                    height={44}
+                  />
+                ) : pattern.file ? (
                   <img
                     className="swatch"
                     src={patternThumbnailUrl(pattern.id, pattern.file.id)}
@@ -296,6 +339,19 @@ export function PatternsScreen() {
         </Sheet>
       )}
 
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null
+          event.target.value = ''
+          void onPhotoChosen(file)
+        }}
+      />
+
       {sheet && (
         <EntitySheet
           key={sheet.mode === 'edit' ? sheet.id : sheet.mode === 'scan' ? 'scan' : 'new'}
@@ -304,9 +360,27 @@ export function PatternsScreen() {
           record={record as Record<string, unknown> | null}
           onSave={save}
           onDelete={sheet.mode === 'edit' ? remove : undefined}
-          onClose={closeSheet}
+          onClose={() => {
+            closeSheet()
+            setPendingPhoto(null)
+          }}
           leading={
-            sheet.mode === 'scan' && scan?.phase === 'review' ? <ScanPreview scan={scan} /> : undefined
+            sheet.mode === 'scan' && scan?.phase === 'review' ? (
+              <ScanPreview scan={scan} />
+            ) : (
+              <>
+                <PhotoField
+                  entityType="pattern"
+                  entityId={sheet.mode === 'edit' ? sheet.id : null}
+                  photos={editRecord?.photos ?? []}
+                  pendingFile={pendingPhoto}
+                  onPendingFile={setPendingPhoto}
+                  onChanged={() => void reload()}
+                  onRequestPhoto={requestPhoto}
+                />
+                {photoError && <p className="error">{photoError}</p>}
+              </>
+            )
           }
         >
           {sheet.mode === 'edit' && editRecord ? (

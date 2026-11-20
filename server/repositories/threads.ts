@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import type { Thread, ThreadFilters, ThreadInput } from '../../shared/model'
 import { TagsRepository } from './tags'
+import { PhotoRepository } from './photos'
 import { RecordNotFoundError, RecordValidationError } from '../errors'
 
 type Row = Record<string, unknown>
@@ -13,7 +14,7 @@ const COLUMNS = `id, name, brand, colour, colour_code, fibre, weight, spools, le
 const nullableText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value))
 const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
 
-function toThread(row: Row, tags: string[]): Thread {
+function toThread(row: Row, photos: Thread['photos'], tags: string[]): Thread {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -32,6 +33,7 @@ function toThread(row: Row, tags: string[]): Thread {
     currency: nullableText(row.currency),
     acquiredOn: nullableText(row.acquired_on),
     notes: nullableText(row.notes),
+    photos,
     tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -59,9 +61,11 @@ const valuesOf = (input: ThreadInput): Array<string | number | null> => [
 
 export class ThreadRepository {
   private readonly tags: TagsRepository
+  private readonly photos: PhotoRepository
 
   constructor(private readonly database: Database) {
     this.tags = new TagsRepository(database)
+    this.photos = new PhotoRepository(database)
   }
 
   count(): number {
@@ -95,13 +99,16 @@ export class ThreadRepository {
     const rows = this.database
       .prepare(`SELECT ${COLUMNS} FROM thread ${clause} ORDER BY brand ASC, name ASC, colour ASC`)
       .all(...parameters) as Row[]
-    const tags = this.tags.namesFor('thread', rows.map((row) => String(row.id)))
-    return rows.map((row) => toThread(row, tags.get(String(row.id)) ?? []))
+    const ids = rows.map((row) => String(row.id))
+    const photos = this.photos.listFor('thread', ids)
+    const tags = this.tags.namesFor('thread', ids)
+    return rows.map((row) => toThread(row, photos.get(String(row.id)) ?? [], tags.get(String(row.id)) ?? []))
   }
 
   get(id: string): Thread | null {
     const row = this.database.prepare(`SELECT ${COLUMNS} FROM thread WHERE id = ?`).get(id) as Row | undefined
-    return row ? toThread(row, this.tags.namesFor('thread', [id]).get(id) ?? []) : null
+    if (!row) return null
+    return toThread(row, this.photos.listFor('thread', [id]).get(id) ?? [], this.tags.namesFor('thread', [id]).get(id) ?? [])
   }
 
   #require(id: string): Thread {
@@ -141,6 +148,8 @@ export class ThreadRepository {
 
   delete(id: string): void {
     this.#require(id)
+    // No foreign key reaches the shared photo table, so the cascade is a step.
+    this.photos.deleteAllFor('thread', id)
     this.database.prepare('DELETE FROM thread WHERE id = ?').run(id)
   }
 }

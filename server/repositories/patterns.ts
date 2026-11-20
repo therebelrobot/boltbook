@@ -12,6 +12,7 @@ import type {
   RequirementRole,
 } from '../../shared/model'
 import { TagsRepository } from './tags'
+import { PhotoRepository } from './photos'
 import { RecordNotFoundError } from '../errors'
 
 type Row = Record<string, unknown>
@@ -85,7 +86,7 @@ function toView(row: Row, requirements: PatternRequirement[]): PatternView {
   }
 }
 
-function toPattern(row: Row, views: PatternView[], file: PatternFile | null, tags: string[]): Pattern {
+function toPattern(row: Row, views: PatternView[], file: PatternFile | null, photos: Pattern['photos'], tags: string[]): Pattern {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -103,6 +104,7 @@ function toPattern(row: Row, views: PatternView[], file: PatternFile | null, tag
     notes: nullableText(row.notes),
     views,
     file,
+    photos,
     tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -127,9 +129,11 @@ const PATTERN_VALUES = (input: PatternInput): Array<string | number | null> => [
 
 export class PatternRepository {
   private readonly tags: TagsRepository
+  private readonly photos: PhotoRepository
 
   constructor(private readonly database: Database) {
     this.tags = new TagsRepository(database)
+    this.photos = new PhotoRepository(database)
   }
 
   count(): number {
@@ -217,9 +221,16 @@ export class PatternRepository {
     const ids = rows.map((row) => String(row.id))
     const views = this.#viewsByPatternId(ids)
     const files = this.#filesByPatternId(ids)
+    const photos = this.photos.listFor('pattern', ids)
     const tags = this.tags.namesFor('pattern', ids)
     return rows.map((row) =>
-      toPattern(row, views.get(String(row.id)) ?? [], files.get(String(row.id)) ?? null, tags.get(String(row.id)) ?? []),
+      toPattern(
+        row,
+        views.get(String(row.id)) ?? [],
+        files.get(String(row.id)) ?? null,
+        photos.get(String(row.id)) ?? [],
+        tags.get(String(row.id)) ?? [],
+      ),
     )
   }
 
@@ -230,6 +241,7 @@ export class PatternRepository {
       row,
       this.#viewsByPatternId([id]).get(id) ?? [],
       this.#filesByPatternId([id]).get(id) ?? null,
+      this.photos.listFor('pattern', [id]).get(id) ?? [],
       this.tags.namesFor('pattern', [id]).get(id) ?? [],
     )
   }
@@ -268,6 +280,8 @@ export class PatternRepository {
 
   delete(id: string): void {
     this.#require(id)
+    // No foreign key reaches the shared photo table, so the cascade is a step.
+    this.photos.deleteAllFor('pattern', id)
     this.database.prepare('DELETE FROM pattern WHERE id = ?').run(id)
   }
 

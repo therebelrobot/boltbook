@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import { TagsRepository } from './tags'
+import { PhotoRepository } from './photos'
 import { computeShortfalls, keyOf, type AllocationClaim } from '../shortfall'
 import type {
   FabricAllocation,
@@ -26,7 +27,7 @@ const nullableText = (value: unknown): string | null => (value === null || value
 const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
 const placeholders = (count: number): string => new Array(count).fill('?').join(', ')
 
-function toProject(row: Row, allocations: ProjectAllocations, tags: string[]): Project {
+function toProject(row: Row, allocations: ProjectAllocations, photos: Project['photos'], tags: string[]): Project {
   return {
     id: String(row.id),
     title: String(row.title),
@@ -37,6 +38,7 @@ function toProject(row: Row, allocations: ProjectAllocations, tags: string[]): P
     finishedOn: nullableText(row.finished_on),
     notes: nullableText(row.notes),
     allocations,
+    photos,
     tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -47,9 +49,11 @@ const emptyAllocations = (): ProjectAllocations => ({ fabrics: [], threads: [], 
 
 export class ProjectRepository {
   private readonly tags: TagsRepository
+  private readonly photos: PhotoRepository
 
   constructor(private readonly database: Database) {
     this.tags = new TagsRepository(database)
+    this.photos = new PhotoRepository(database)
   }
 
   count(): number {
@@ -108,14 +112,22 @@ export class ProjectRepository {
       .all(...parameters) as Row[]
     const ids = rows.map((row) => String(row.id))
     const allocations = this.#allocationsFor(ids)
+    const photos = this.photos.listFor('project', ids)
     const tags = this.tags.namesFor('project', ids)
-    return rows.map((row) => toProject(row, allocations.get(String(row.id)) ?? emptyAllocations(), tags.get(String(row.id)) ?? []))
+    return rows.map((row) =>
+      toProject(row, allocations.get(String(row.id)) ?? emptyAllocations(), photos.get(String(row.id)) ?? [], tags.get(String(row.id)) ?? []),
+    )
   }
 
   get(id: string): Project | null {
     const row = this.database.prepare(`SELECT ${PROJECT_COLUMNS} FROM project WHERE id = ?`).get(id) as Row | undefined
     if (!row) return null
-    return toProject(row, this.#allocationsFor([id]).get(id) ?? emptyAllocations(), this.tags.namesFor('project', [id]).get(id) ?? [])
+    return toProject(
+      row,
+      this.#allocationsFor([id]).get(id) ?? emptyAllocations(),
+      this.photos.listFor('project', [id]).get(id) ?? [],
+      this.tags.namesFor('project', [id]).get(id) ?? [],
+    )
   }
 
   #require(id: string): Project {
@@ -157,6 +169,8 @@ export class ProjectRepository {
 
   delete(id: string): void {
     this.#require(id)
+    // No foreign key reaches the shared photo table, so the cascade is a step.
+    this.photos.deleteAllFor('project', id)
     this.database.prepare('DELETE FROM project WHERE id = ?').run(id)
   }
 

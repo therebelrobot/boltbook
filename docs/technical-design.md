@@ -1,9 +1,9 @@
 # boltbook — Technical Design
 
-**Document version:** 1.1 · **Last updated:** 2026-11-14
+**Document version:** 1.2 · **Last updated:** 2026-11-20
 **Companion:** `product-brief.md`, `adr/0001-no-encryption-at-rest.md`
-**Status:** v1 built; v2 in progress — pattern PDFs, storage labels, tiled printing and local
-envelope OCR are built (v2-plan §5–§8).
+**Status:** v1 built; v2 in progress — pattern PDFs, storage labels, tiled printing, local
+envelope OCR (v2-plan §5–§8) and photos on every record (§3) are built.
 
 ---
 
@@ -106,9 +106,12 @@ fabric(id PK, name, fibre, weight, colour, print_type, width_mm,
 
 fabric_photo(id PK, fabric_id FK→fabric ON DELETE CASCADE, position,
              content_type, bytes BLOB, width_px, height_px)
-             -- v2: generalises to photo(id, entity_type, entity_id, position, content_type,
-             --     bytes, width_px, height_px), so every record — fabric, thread, notion, tool,
-             --     pattern, project — can carry a photo; existing rows are copied (§7, v2-plan §3)
+             -- BUILT 2026-11-20 (migration 9, v2-plan §3): generalised to
+             -- photo(id, entity_type, entity_id, position, content_type, bytes BLOB,
+             --       width_px, height_px, created_at) — every record can carry a photo.
+             -- entity_id carries no FK (it addresses six tables), so each repository
+             -- deletes a record's photos explicitly; the fabric routes remain as an
+             -- alias. Existing rows were copied byte-for-byte with entity_type='fabric'.
 
 pattern(id PK, brand, number, name, format, size_min, size_max, difficulty,
         category, source, year, tried_and_true INTEGER, link_url, notes,
@@ -218,9 +221,11 @@ POST   /api/fabrics
 GET    /api/fabrics/:id
 PUT    /api/fabrics/:id
 DELETE /api/fabrics/:id
-POST   /api/fabrics/:id/photos        multipart, one photo
-DELETE /api/fabrics/:id/photos/:photoId
-GET    /api/fabrics/:id/photos/:photoId   raw bytes, immutable cache
+POST   /api/photos/:entityType/:entityId        multipart, one photo
+DELETE /api/photos/:entityType/:entityId/:photoId
+GET    /api/photos/:entityType/:entityId/:photoId   raw bytes, immutable cache
+       -- entityType ∈ fabric | thread | notion | tool | pattern | project
+       -- the older /api/fabrics/:id/photos… paths remain as an alias
 
 GET/POST        /api/patterns
 GET/PUT/DELETE  /api/patterns/:id

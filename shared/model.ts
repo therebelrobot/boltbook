@@ -17,9 +17,14 @@ export interface Tag {
   usageCount: number
 }
 
-export interface FabricPhoto {
+/**
+ * A photo on any record. The bytes are served by id; the metadata is what a
+ * list carries. `entityType` is the taggable set — the same six kinds of record.
+ */
+export interface Photo {
   id: string
-  fabricId: string
+  entityType: TaggableType
+  entityId: string
   position: number
   contentType: string
   widthPx: number | null
@@ -45,7 +50,7 @@ export interface Fabric {
   location: string | null
   care: string | null
   notes: string | null
-  photos: FabricPhoto[]
+  photos: Photo[]
   tags: string[]
   createdAt: string
   updatedAt: string
@@ -124,6 +129,7 @@ export interface Pattern {
   notes: string | null
   views: PatternView[]
   file: PatternFile | null
+  photos: Photo[]
   tags: string[]
   createdAt: string
   updatedAt: string
@@ -175,12 +181,13 @@ export interface Notion {
   unit: string | null
   location: string | null
   notes: string | null
+  photos: Photo[]
   tags: string[]
   createdAt: string
   updatedAt: string
 }
 
-export type NotionInput = Omit<Notion, 'id' | 'createdAt' | 'updatedAt'>
+export type NotionInput = Omit<Notion, 'id' | 'photos' | 'createdAt' | 'updatedAt'>
 
 export interface NotionFilters {
   kind?: NotionKind
@@ -207,12 +214,13 @@ export interface Thread {
   currency: string | null
   acquiredOn: string | null
   notes: string | null
+  photos: Photo[]
   tags: string[]
   createdAt: string
   updatedAt: string
 }
 
-export type ThreadInput = Omit<Thread, 'id' | 'createdAt' | 'updatedAt'>
+export type ThreadInput = Omit<Thread, 'id' | 'photos' | 'createdAt' | 'updatedAt'>
 
 export interface ThreadFilters {
   colour?: string
@@ -234,12 +242,13 @@ export interface Tool {
   costMinor: number | null
   currency: string | null
   notes: string | null
+  photos: Photo[]
   tags: string[]
   createdAt: string
   updatedAt: string
 }
 
-export type ToolInput = Omit<Tool, 'id' | 'createdAt' | 'updatedAt'>
+export type ToolInput = Omit<Tool, 'id' | 'photos' | 'createdAt' | 'updatedAt'>
 
 export interface ToolFilters {
   category?: ToolCategory
@@ -287,12 +296,13 @@ export interface Project {
   finishedOn: string | null
   notes: string | null
   allocations: ProjectAllocations
+  photos: Photo[]
   tags: string[]
   createdAt: string
   updatedAt: string
 }
 
-export type ProjectInput = Omit<Project, 'id' | 'allocations' | 'consumed' | 'createdAt' | 'updatedAt'>
+export type ProjectInput = Omit<Project, 'id' | 'allocations' | 'consumed' | 'photos' | 'createdAt' | 'updatedAt'>
 
 export interface ProjectFilters {
   status?: ProjectStatus

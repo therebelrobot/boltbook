@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import type { Tool, ToolCategory, ToolFilters, ToolInput } from '../../shared/model'
 import { TagsRepository } from './tags'
+import { PhotoRepository } from './photos'
 import { RecordNotFoundError } from '../errors'
 
 type Row = Record<string, unknown>
@@ -12,7 +13,7 @@ const COLUMNS = `id, name, category, brand, spec, quantity, location, needs_atte
 const nullableText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value))
 const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
 
-function toTool(row: Row, tags: string[]): Tool {
+function toTool(row: Row, photos: Tool['photos'], tags: string[]): Tool {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -26,6 +27,7 @@ function toTool(row: Row, tags: string[]): Tool {
     costMinor: nullableNumber(row.cost_minor),
     currency: nullableText(row.currency),
     notes: nullableText(row.notes),
+    photos,
     tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -48,9 +50,11 @@ const valuesOf = (input: ToolInput): Array<string | number | null> => [
 
 export class ToolRepository {
   private readonly tags: TagsRepository
+  private readonly photos: PhotoRepository
 
   constructor(private readonly database: Database) {
     this.tags = new TagsRepository(database)
+    this.photos = new PhotoRepository(database)
   }
 
   count(): number {
@@ -84,13 +88,16 @@ export class ToolRepository {
     const rows = this.database
       .prepare(`SELECT ${COLUMNS} FROM tool ${clause} ORDER BY category ASC, name ASC`)
       .all(...parameters) as Row[]
-    const tags = this.tags.namesFor('tool', rows.map((row) => String(row.id)))
-    return rows.map((row) => toTool(row, tags.get(String(row.id)) ?? []))
+    const ids = rows.map((row) => String(row.id))
+    const photos = this.photos.listFor('tool', ids)
+    const tags = this.tags.namesFor('tool', ids)
+    return rows.map((row) => toTool(row, photos.get(String(row.id)) ?? [], tags.get(String(row.id)) ?? []))
   }
 
   get(id: string): Tool | null {
     const row = this.database.prepare(`SELECT ${COLUMNS} FROM tool WHERE id = ?`).get(id) as Row | undefined
-    return row ? toTool(row, this.tags.namesFor('tool', [id]).get(id) ?? []) : null
+    if (!row) return null
+    return toTool(row, this.photos.listFor('tool', [id]).get(id) ?? [], this.tags.namesFor('tool', [id]).get(id) ?? [])
   }
 
   #require(id: string): Tool {
@@ -127,6 +134,8 @@ export class ToolRepository {
 
   delete(id: string): void {
     this.#require(id)
+    // No foreign key reaches the shared photo table, so the cascade is a step.
+    this.photos.deleteAllFor('tool', id)
     this.database.prepare('DELETE FROM tool WHERE id = ?').run(id)
   }
 }

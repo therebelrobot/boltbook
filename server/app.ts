@@ -16,6 +16,7 @@ import { ThreadRepository, assertThreadInvariant } from './repositories/threads'
 import { ToolRepository } from './repositories/tools'
 import { ProjectRepository } from './repositories/projects'
 import { TagsRepository } from './repositories/tags'
+import { PhotoRepository, isPhotoEntityType, type PhotoEntityType } from './repositories/photos'
 import { searchAll } from './repositories/search'
 import { buildExportZip } from './export'
 import { importExport } from './import'
@@ -140,6 +141,7 @@ export function createApplication(dependencies: ApplicationDependencies) {
   const tools = new ToolRepository(database)
   const projects = new ProjectRepository(database)
   const tags = new TagsRepository(database)
+  const photos = new PhotoRepository(database)
   const account = new AccountService(database, config.scryptParameters, currentTimeMilliseconds)
   const sessions = new SessionStore(
     config.sessionIdleMinutes * 60_000,
@@ -515,33 +517,54 @@ export function createApplication(dependencies: ApplicationDependencies) {
     return context.json({ ok: true })
   })
 
-  // Fabric photos — one image per request, raw bytes, downscaled and EXIF-stripped client-side.
+  // Photos — every record can carry them, through one shared table and one
+  // route keyed by entity type + id. Raw bytes, downscaled and EXIF-stripped
+  // client-side; the fabric path stays as an alias so nothing that already
+  // links to a fabric photo breaks.
 
-  app.post('/api/fabrics/:fabricId/photos', async (context) => {
+  /** The entity type from the path, or 404 — never an injection surface. */
+  const photoEntityType = (context: Context): PhotoEntityType => {
+    const raw = context.req.param('entityType') ?? ''
+    if (!isPhotoEntityType(raw)) throw new RecordNotFoundError('No such kind of record.')
+    return raw
+  }
+
+  const readPhotoUpload = async (context: Context) => {
     const contentType = (context.req.header('content-type') ?? '').split(';')[0]!.trim().toLowerCase()
     if (!ALLOWED_PHOTO_TYPES.has(contentType)) throw new RecordValidationError('Photos must be JPEG, PNG or WebP.')
     const bytes = Buffer.from(await context.req.arrayBuffer())
     if (bytes.byteLength === 0) throw new RecordValidationError('The photo is empty.')
     if (bytes.byteLength > MAX_PHOTO_BYTES) throw new RecordValidationError('The photo is larger than 8 MB.')
-    const widthPx = optionalIntegerQuery(context, 'widthPx', 20_000)
-    const heightPx = optionalIntegerQuery(context, 'heightPx', 20_000)
-    return context.json(fabrics.addPhoto(context.req.param('fabricId'), { contentType, bytes, widthPx, heightPx }, nowIso()), 201)
-  })
+    return { contentType, bytes, widthPx: optionalIntegerQuery(context, 'widthPx', 20_000), heightPx: optionalIntegerQuery(context, 'heightPx', 20_000) }
+  }
 
-  app.get('/api/fabrics/:fabricId/photos/:photoId', (context) => {
-    const photo = fabrics.getPhotoBytes(context.req.param('fabricId'), context.req.param('photoId'))
+  const addPhoto = async (context: Context, entityType: PhotoEntityType) => {
+    const input = await readPhotoUpload(context)
+    return context.json(photos.add(entityType, context.req.param('entityId') ?? context.req.param('fabricId') ?? '', input, nowIso()), 201)
+  }
+
+  const readPhoto = (context: Context, entityType: PhotoEntityType) => {
+    const photo = photos.getBytes(entityType, context.req.param('entityId') ?? context.req.param('fabricId') ?? '', context.req.param('photoId') ?? '')
     if (!photo) throw new RecordNotFoundError('No such photo.')
     context.header('Content-Type', photo.contentType)
     context.header('Content-Disposition', 'inline')
     // The id is the cache key: a replaced photo gets a new id, so this never serves stale bytes.
     context.header('Cache-Control', 'public, max-age=31536000, immutable')
     return context.body(new Uint8Array(photo.bytes))
-  })
+  }
 
-  app.delete('/api/fabrics/:fabricId/photos/:photoId', (context) => {
-    fabrics.deletePhoto(context.req.param('fabricId'), context.req.param('photoId'))
+  const removePhoto = (context: Context, entityType: PhotoEntityType) => {
+    photos.delete(entityType, context.req.param('entityId') ?? context.req.param('fabricId') ?? '', context.req.param('photoId') ?? '')
     return context.json({ ok: true })
-  })
+  }
+
+  app.post('/api/photos/:entityType/:entityId', (context) => addPhoto(context, photoEntityType(context)))
+  app.get('/api/photos/:entityType/:entityId/:photoId', (context) => readPhoto(context, photoEntityType(context)))
+  app.delete('/api/photos/:entityType/:entityId/:photoId', (context) => removePhoto(context, photoEntityType(context)))
+
+  app.post('/api/fabrics/:fabricId/photos', (context) => addPhoto(context, 'fabric'))
+  app.get('/api/fabrics/:fabricId/photos/:photoId', (context) => readPhoto(context, 'fabric'))
+  app.delete('/api/fabrics/:fabricId/photos/:photoId', (context) => removePhoto(context, 'fabric'))
 
   // Pattern (with nested views and requirements)
 

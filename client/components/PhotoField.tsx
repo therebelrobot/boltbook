@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { photoUrl } from '../api'
-import type { FabricPhoto } from '../../shared/model'
+import type { Photo, TaggableType } from '../../shared/model'
 
 interface PhotoFieldProps {
-  /** Null while creating: the photo is held and uploaded once the fabric exists. */
-  fabricId: string | null
-  photos: FabricPhoto[]
+  /** What kind of record the photos hang on. */
+  entityType: TaggableType
+  /** Null while creating: the photo is held and uploaded once the record exists. */
+  entityId: string | null
+  photos: Photo[]
   pendingFile: File | null
   onPendingFile: (file: File | null) => void
   onChanged: () => void
@@ -14,10 +16,10 @@ interface PhotoFieldProps {
    * gesture — iOS refuses a programmatic one — so the input lives on the screen
    * and this only forwards the intent.
    */
-  onRequestPhoto: (fabricId: string | null) => void
+  onRequestPhoto: (entityId: string | null) => void
 }
 
-export function PhotoField({ fabricId, photos, pendingFile, onPendingFile, onChanged, onRequestPhoto }: PhotoFieldProps) {
+export function PhotoField({ entityType, entityId, photos, pendingFile, onPendingFile, onChanged, onRequestPhoto }: PhotoFieldProps) {
   const [removing, setRemoving] = useState(false)
   const [pendingUrl, setPendingUrl] = useState<string | null>(null)
 
@@ -32,10 +34,10 @@ export function PhotoField({ fabricId, photos, pendingFile, onPendingFile, onCha
   }, [pendingFile])
 
   const remove = async (photoId: string): Promise<void> => {
-    if (!fabricId) return
+    if (!entityId) return
     setRemoving(true)
     try {
-      await fetch(photoUrl(fabricId, photoId), {
+      await fetch(photoUrl(entityType, entityId, photoId), {
         method: 'DELETE',
         credentials: 'same-origin',
         headers: { 'x-boltbook-request': '1' },
@@ -52,12 +54,17 @@ export function PhotoField({ fabricId, photos, pendingFile, onPendingFile, onCha
         Photos
       </span>
 
-      {fabricId
+      {entityId
         ? photos.length > 0 && (
             <div className="photo-grid">
               {photos.map((photo) => (
                 <figure key={photo.id}>
-                  <img src={photoUrl(fabricId, photo.id)} alt="" width={photo.widthPx ?? undefined} height={photo.heightPx ?? undefined} />
+                  <img
+                    src={photoUrl(entityType, entityId, photo.id)}
+                    alt=""
+                    width={photo.widthPx ?? undefined}
+                    height={photo.heightPx ?? undefined}
+                  />
                   <button type="button" aria-label="Remove photo" disabled={removing} onClick={() => void remove(photo.id)}>
                     ×
                   </button>
@@ -76,7 +83,7 @@ export function PhotoField({ fabricId, photos, pendingFile, onPendingFile, onCha
             </div>
           )}
 
-      <button type="button" className="button" onClick={() => onRequestPhoto(fabricId)}>
+      <button type="button" className="button" onClick={() => onRequestPhoto(entityId)}>
         {pendingFile || photos.length > 0 ? 'Add another photo' : 'Take a photo'}
       </button>
     </div>
