@@ -23,6 +23,8 @@ export const FABRIC_FIELDS: readonly FieldSpec[] = [
   { name: 'weight', label: 'Weight', kind: 'text', placeholder: 'quilting, mid, canvas…' },
   { name: 'colour', label: 'Colour', kind: 'text' },
   { name: 'printType', label: 'Print', kind: 'text', placeholder: 'solid, stripe, check…' },
+  { name: 'artist', label: 'Artist', kind: 'text', placeholder: 'who designed the print' },
+  { name: 'repurchaseUrl', label: 'Repurchase link', kind: 'text', placeholder: 'https://…' },
   { name: 'lengthMm', label: 'Remaining', kind: 'number', inputMode: 'numeric', unitKind: 'fabricLength' },
   { name: 'widthMm', label: 'Width', kind: 'number', inputMode: 'numeric', unitKind: 'fabricWidth' },
   { name: 'originalLengthMm', label: 'Bought', kind: 'number', inputMode: 'numeric', unitKind: 'fabricLength' },

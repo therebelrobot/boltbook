@@ -49,6 +49,10 @@ export interface Fabric {
   acquiredOn: string | null
   location: string | null
   care: string | null
+  /** Who designed the print — a different question from `source`, the supplier. */
+  artist: string | null
+  /** Where this came from, so it can be bought again. http(s) only, checked at write. */
+  repurchaseUrl: string | null
   notes: string | null
   photos: Photo[]
   tags: string[]

@@ -34,6 +34,13 @@ export const fabricInputSchema = z.object({
   location: optionalText(200),
   care: optionalText(500),
   notes: nullable(z.string().max(5000)),
+  artist: optionalText(200),
+  // Rendered as a link, so `javascript:` must be refused before it is stored,
+  // not filtered at the click. http(s) only.
+  repurchaseUrl: nullable(z.string().trim().max(1000)).refine(
+    (value) => value === null || /^https?:\/\//i.test(value),
+    'A repurchase link must be an http(s) URL.',
+  ),
   tags: tagList,
 })
 

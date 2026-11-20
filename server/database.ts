@@ -14,6 +14,11 @@ import { DatabaseSync } from 'node:sqlite'
  *     entity type + id; the existing rows are copied byte-for-byte as
  *     `entity_type = 'fabric'`.
  * 10 — search reaches the small records: notion and project join the FTS set.
+ * 11 — provenance on a fabric: `artist` (who designed the print) and
+ *     `repurchase_url` (where this came from). `artist` is searchable, which
+ *     means rebuilding `fabric_fts` — external-content FTS5 cannot be altered
+ *     in place, so the triggers are rewritten and the index repopulated.
+ *     `repurchase_url` stays out of the index: it is a link, not a question.
  */
 /** Exported for the migration tests: they build an older schema and step it forward. */
 export const MIGRATIONS: string[] = [
@@ -380,6 +385,37 @@ export const MIGRATIONS: string[] = [
       SELECT rowid, name, colour, spec, location, notes FROM notion;
     INSERT INTO project_fts(rowid, title, notes)
       SELECT rowid, title, notes FROM project;`,
+
+   `ALTER TABLE fabric ADD COLUMN repurchase_url TEXT;
+    ALTER TABLE fabric ADD COLUMN artist TEXT;
+
+    -- 'artist' is searchable, and external-content FTS5 cannot be altered in
+    -- place: the triggers are rewritten and the index repopulated from the
+    -- table, so nothing is lost and no reindex step is asked of the operator.
+    DROP TRIGGER fabric_after_insert;
+    DROP TRIGGER fabric_after_delete;
+    DROP TRIGGER fabric_after_update;
+    DROP TABLE fabric_fts;
+    CREATE VIRTUAL TABLE fabric_fts USING fts5(
+      name, fibre, colour, print_type, location, notes, artist,
+      content='fabric', content_rowid='rowid'
+    );
+    CREATE TRIGGER fabric_after_insert AFTER INSERT ON fabric BEGIN
+      INSERT INTO fabric_fts(rowid, name, fibre, colour, print_type, location, notes, artist)
+      VALUES (new.rowid, new.name, new.fibre, new.colour, new.print_type, new.location, new.notes, new.artist);
+    END;
+    CREATE TRIGGER fabric_after_delete AFTER DELETE ON fabric BEGIN
+      INSERT INTO fabric_fts(fabric_fts, rowid, name, fibre, colour, print_type, location, notes, artist)
+      VALUES ('delete', old.rowid, old.name, old.fibre, old.colour, old.print_type, old.location, old.notes, old.artist);
+    END;
+    CREATE TRIGGER fabric_after_update AFTER UPDATE ON fabric BEGIN
+      INSERT INTO fabric_fts(fabric_fts, rowid, name, fibre, colour, print_type, location, notes, artist)
+      VALUES ('delete', old.rowid, old.name, old.fibre, old.colour, old.print_type, old.location, old.notes, old.artist);
+      INSERT INTO fabric_fts(rowid, name, fibre, colour, print_type, location, notes, artist)
+      VALUES (new.rowid, new.name, new.fibre, new.colour, new.print_type, new.location, new.notes, new.artist);
+    END;
+    INSERT INTO fabric_fts(rowid, name, fibre, colour, print_type, location, notes, artist)
+      SELECT rowid, name, fibre, colour, print_type, location, notes, artist FROM fabric;`,
 ]
 
 export type Database = DatabaseSync

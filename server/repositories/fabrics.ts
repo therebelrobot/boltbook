@@ -9,7 +9,7 @@ type Row = Record<string, unknown>
 
 const COLUMNS = `id, name, fibre, weight, length_mm, width_mm, original_length_mm,
   colour, print_type, source, cost_minor, currency, acquired_on, location, care, notes,
-  created_at, updated_at`
+  artist, repurchase_url, created_at, updated_at`
 
 const nullableText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value))
 const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
@@ -32,6 +32,8 @@ function toFabric(row: Row, photos: Fabric['photos'], tags: string[]): Fabric {
     location: nullableText(row.location),
     care: nullableText(row.care),
     notes: nullableText(row.notes),
+    artist: nullableText(row.artist),
+    repurchaseUrl: nullableText(row.repurchase_url),
     photos,
     tags,
     createdAt: String(row.created_at),
@@ -57,6 +59,8 @@ function valuesOf(input: FabricInput): Array<string | number | null> {
     input.location,
     input.care,
     input.notes,
+    input.artist,
+    input.repurchaseUrl,
   ]
 }
 
@@ -124,8 +128,8 @@ export class FabricRepository {
       .prepare(
         `INSERT INTO fabric (id, name, fibre, weight, length_mm, width_mm, original_length_mm,
           colour, print_type, source, cost_minor, currency, acquired_on, location, care, notes,
-          created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          artist, repurchase_url, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(id, ...valuesOf(input), nowIso, nowIso)
     this.tags.setFor('fabric', id, input.tags, nowIso)
@@ -138,7 +142,8 @@ export class FabricRepository {
       .prepare(
         `UPDATE fabric SET name = ?, fibre = ?, weight = ?, length_mm = ?, width_mm = ?,
           original_length_mm = ?, colour = ?, print_type = ?, source = ?, cost_minor = ?,
-          currency = ?, acquired_on = ?, location = ?, care = ?, notes = ?, updated_at = ?
+          currency = ?, acquired_on = ?, location = ?, care = ?, notes = ?, artist = ?,
+          repurchase_url = ?, updated_at = ?
          WHERE id = ?`,
       )
       .run(...valuesOf(input), nowIso, id)

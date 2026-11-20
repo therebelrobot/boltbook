@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { DatabaseSync } from 'node:sqlite'
+import { MIGRATIONS } from '../server/database'
 import { freshApp, json, readJson } from './helpers'
 
 test('an empty instance reports zero of everything', async () => {
@@ -97,4 +99,78 @@ test('filters narrow by fibre and by minimum length', async () => {
 
   const longEnough = await readJson<Array<{ name: string }>>(await app.request('/api/fabrics?minLengthMm=1000'))
   assert.deepEqual(longEnough.map((f) => f.name), ['Linen'])
+})
+
+const put = (body: unknown): RequestInit => ({
+  method: 'PUT',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+})
+
+test('a repurchase link must be http(s) at write time, not filtered at the click', async () => {
+  const app = await freshApp()
+
+  // Rendered as a link, so `javascript:` is refused before it is stored.
+  const rejected = await app.request('/api/fabrics', json({ name: 'Sneaky', repurchaseUrl: 'javascript:alert(1)' }))
+  assert.equal(rejected.status, 400)
+  assert.equal((await readJson<unknown[]>(await app.request('/api/fabrics'))).length, 0)
+
+  const stillRejected = await app.request('/api/fabrics', json({ name: 'Sneaky', repurchaseUrl: 'JAVASCRIPT:alert(1)' }))
+  assert.equal(stillRejected.status, 400)
+
+  const dataUrlRejected = await app.request('/api/fabrics', json({ name: 'Sneaky', repurchaseUrl: 'data:text/html,hi' }))
+  assert.equal(dataUrlRejected.status, 400)
+
+  // An ordinary shop link is fine, and round-trips.
+  const created = await readJson<{ id: string; repurchaseUrl: string | null; artist: string | null }>(
+    await app.request('/api/fabrics', json({ name: 'Linen', repurchaseUrl: 'https://example.com/linen', artist: 'Hannah Dale' })),
+  )
+  assert.equal(created.repurchaseUrl, 'https://example.com/linen')
+  assert.equal(created.artist, 'Hannah Dale')
+
+  // Clearing it is allowed, and an update carries both fields.
+  const updated = await readJson<{ repurchaseUrl: string | null; artist: string | null }>(
+    await app.request(`/api/fabrics/${created.id}`, put({ name: 'Linen', repurchaseUrl: null, artist: 'Hannah Dale' })),
+  )
+  assert.equal(updated.repurchaseUrl, null)
+  assert.equal(updated.artist, 'Hannah Dale')
+})
+
+test('an artist is findable through search', async () => {
+  const app = await freshApp()
+  await app.request('/api/fabrics', json({ name: 'Meadow print', artist: 'Hannah Dale' }))
+
+  const hits = await readJson<Array<{ type: string; title: string }>>(await app.request('/api/search?q=hannah'))
+  assert.deepEqual(hits.map((hit) => [hit.type, hit.title]), [['fabric', 'Meadow print']])
+})
+
+test('the FTS rebuild keeps the fields it already indexed, and gains artist', async () => {
+  const database = new DatabaseSync(':memory:')
+  // The schema as it was before this migration, then a fabric in it.
+  for (let index = 0; index < 9; index += 1) database.exec(MIGRATIONS[index]!)
+  database
+    .prepare(
+      "INSERT INTO fabric (id, name, notes, created_at, updated_at) VALUES ('f1', 'Meadow print', 'a gift from mum', '2026-01-01', '2026-01-01')",
+    )
+    .run()
+
+  for (let index = 9; index < MIGRATIONS.length; index += 1) database.exec(MIGRATIONS[index]!)
+
+  // The new column is indexed.
+  const byArtist = database.prepare(`SELECT rowid FROM fabric_fts WHERE fabric_fts MATCH '"hannah"*'`).get()
+  assert.equal(byArtist, undefined, 'nothing indexed artist yet — now add one and let the trigger work')
+
+  database
+    .prepare("UPDATE fabric SET artist = 'Hannah Dale' WHERE id = 'f1'")
+    .run()
+  const artistHit = database.prepare(`SELECT rowid FROM fabric_fts WHERE fabric_fts MATCH '"hannah"*'`).get() as
+    | { rowid: number }
+    | undefined
+  assert.ok(artistHit, 'the trigger indexes the new column')
+
+  // And the old fields survived the rebuild.
+  const notesHit = database.prepare(`SELECT rowid FROM fabric_fts WHERE fabric_fts MATCH '"gift"*'`).get() as
+    | { rowid: number }
+    | undefined
+  assert.ok(notesHit, 'the pre-existing fields are still indexed')
 })
