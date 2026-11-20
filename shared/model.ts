@@ -363,4 +363,6 @@ export interface Status {
   threadCount: number
   toolCount: number
   projectCount: number
+  /** What the stash is worth — fabric, thread and tools, one total per currency. */
+  stashValue: Array<{ currency: string; minor: number }>
 }

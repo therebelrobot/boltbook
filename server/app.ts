@@ -22,6 +22,7 @@ import { buildExportZip } from './export'
 import { importExport } from './import'
 import { listLocations } from './locations'
 import { presentShoppingList, shoppingListText } from './shoppingList'
+import { projectCost, stashValue } from './costing'
 import {
   FABRIC_ALLOCATION_MEASURES,
   FABRIC_MEASURES,
@@ -387,6 +388,7 @@ export function createApplication(dependencies: ApplicationDependencies) {
       threadCount: threads.count(),
       toolCount: tools.count(),
       projectCount: projects.count(),
+      stashValue: stashValue(database),
     }
     return context.json(status)
   })
@@ -900,6 +902,14 @@ export function createApplication(dependencies: ApplicationDependencies) {
       return context.text(shoppingListText(project.title, items))
     }
     return context.json({ items })
+  })
+
+  // What a project cost: the allocated records' own cost_minor, totalled per
+  // currency — never one number across currencies, and no invented exchange rate.
+  app.get('/api/projects/:projectId/cost', (context) => {
+    const cost = projectCost(database, context.req.param('projectId'))
+    if (!cost) throw new RecordNotFoundError('No such project.')
+    return context.json(cost)
   })
 
   // Tags — one vocabulary, shared by every record
