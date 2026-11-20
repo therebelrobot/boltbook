@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from '../database'
 import type { Notion, NotionFilters, NotionInput, NotionKind } from '../../shared/model'
 import { TagsRepository } from './tags'
+import { PhotoRepository } from './photos'
 import { RecordNotFoundError } from '../errors'
 
 type Row = Record<string, unknown>
@@ -11,7 +12,7 @@ const COLUMNS = `id, name, kind, colour, spec, quantity, unit, location, notes, 
 const nullableText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value))
 const nullableNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
 
-function toNotion(row: Row, tags: string[]): Notion {
+function toNotion(row: Row, photos: Notion['photos'], tags: string[]): Notion {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -22,6 +23,7 @@ function toNotion(row: Row, tags: string[]): Notion {
     unit: nullableText(row.unit),
     location: nullableText(row.location),
     notes: nullableText(row.notes),
+    photos,
     tags,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -41,9 +43,11 @@ const valuesOf = (input: NotionInput): Array<string | number | null> => [
 
 export class NotionRepository {
   private readonly tags: TagsRepository
+  private readonly photos: PhotoRepository
 
   constructor(private readonly database: Database) {
     this.tags = new TagsRepository(database)
+    this.photos = new PhotoRepository(database)
   }
 
   count(): number {
@@ -73,13 +77,16 @@ export class NotionRepository {
     const rows = this.database
       .prepare(`SELECT ${COLUMNS} FROM notion ${clause} ORDER BY kind ASC, name ASC`)
       .all(...parameters) as Row[]
-    const tags = this.tags.namesFor('notion', rows.map((row) => String(row.id)))
-    return rows.map((row) => toNotion(row, tags.get(String(row.id)) ?? []))
+    const ids = rows.map((row) => String(row.id))
+    const photos = this.photos.listFor('notion', ids)
+    const tags = this.tags.namesFor('notion', ids)
+    return rows.map((row) => toNotion(row, photos.get(String(row.id)) ?? [], tags.get(String(row.id)) ?? []))
   }
 
   get(id: string): Notion | null {
     const row = this.database.prepare(`SELECT ${COLUMNS} FROM notion WHERE id = ?`).get(id) as Row | undefined
-    return row ? toNotion(row, this.tags.namesFor('notion', [id]).get(id) ?? []) : null
+    if (!row) return null
+    return toNotion(row, this.photos.listFor('notion', [id]).get(id) ?? [], this.tags.namesFor('notion', [id]).get(id) ?? [])
   }
 
   #require(id: string): Notion {
@@ -114,6 +121,8 @@ export class NotionRepository {
 
   delete(id: string): void {
     this.#require(id)
+    // No foreign key reaches the shared photo table, so the cascade is a step.
+    this.photos.deleteAllFor('notion', id)
     this.database.prepare('DELETE FROM notion WHERE id = ?').run(id)
   }
 }

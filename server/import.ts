@@ -25,7 +25,7 @@ const DELETE_ORDER = [
   'project_thread',
   'project_notion',
   'project',
-  'fabric_photo',
+  'photo',
   'pattern_file',
   'pattern_requirement',
   'pattern_view',
@@ -113,16 +113,22 @@ export function importExport(database: Database, zip: Buffer): ImportResult {
     }
 
     // Photos: the metadata comes from the JSON, the bytes from the zip entries.
-    const photoRows = Array.isArray(tables.fabric_photo) ? tables.fabric_photo! : []
+    // An export from before the shared photo table kept rows under
+    // `fabric_photo`; those become `entity_type = 'fabric'` rows here.
+    const legacyPhotoRows = Array.isArray(tables.fabric_photo) ? tables.fabric_photo! : []
+    const photoRows: Row[] = Array.isArray(tables.photo)
+      ? tables.photo!
+      : legacyPhotoRows.map((row) => ({ ...row, entity_type: 'fabric', entity_id: row.fabric_id }))
     for (const row of photoRows) {
       const file = typeof row.file === 'string' ? entries.get(row.file) : undefined
       if (!file) continue
       const withBytes: Row = { ...row, bytes: file }
       delete withBytes.file
-      insert('fabric_photo', withBytes)
+      delete withBytes.fabric_id
+      insert('photo', withBytes)
       photoCount += 1
     }
-    counts.fabric_photo = photoCount
+    counts.photo = photoCount
 
     // Pattern files: metadata from the JSON, PDF and thumbnail bytes from their
     // entries. A row without its PDF entry is skipped rather than half-written.

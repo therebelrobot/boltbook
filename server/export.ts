@@ -11,7 +11,7 @@ type Row = Record<string, unknown>
  * Two deliberate exclusions:
  * - `account` — the export is your data, not your credentials. Restoring it
  *   should never carry a passphrase hash or an authenticator secret with it.
- * - `fabric_photo.bytes` — the bytes are the `photos/` entries; the JSON keeps
+ * - `photo.bytes` — the bytes are the `photos/` entries; the JSON keeps
  *   the metadata and the filename to match them up.
  * - `pattern_file.pdf_bytes` and `thumbnail_bytes` — pattern files are records,
  *   so they are exported, but their bytes are the `pattern-files/` entries for
@@ -53,7 +53,7 @@ export function buildExport(database: Database, exportedAt: string): BuiltExport
 
   // Photo bytes become files; the JSON keeps the metadata and how to find them.
   const photoRows = database
-    .prepare('SELECT id, fabric_id, content_type, bytes FROM fabric_photo')
+    .prepare('SELECT id, content_type, bytes FROM photo')
     .all() as Row[]
   const entries: ZipEntry[] = []
   const files: Array<{ id: string; file: string }> = []
@@ -65,7 +65,9 @@ export function buildExport(database: Database, exportedAt: string): BuiltExport
   const fileByPhotoId = new Map(files.map((entry) => [entry.id, entry.file]))
 
   const photoMetadata = (
-    database.prepare('SELECT id, fabric_id, position, content_type, width_px, height_px, created_at FROM fabric_photo').all() as Row[]
+    database
+      .prepare('SELECT id, entity_type, entity_id, position, content_type, width_px, height_px, created_at FROM photo')
+      .all() as Row[]
   ).map((row) => ({ ...row, file: fileByPhotoId.get(String(row.id)) ?? null }))
 
   // Pattern files: the PDF and its thumbnail become entries; the metadata keeps
@@ -101,7 +103,7 @@ export function buildExport(database: Database, exportedAt: string): BuiltExport
     version: 1,
     exportedAt,
     note: 'Records, tags, photo metadata and pattern files. Bytes are the photos/ and pattern-files/ entries. Credentials are never exported.',
-    tables: { ...tables, fabric_photo: photoMetadata, pattern_file: patternFileMetadata },
+    tables: { ...tables, photo: photoMetadata, pattern_file: patternFileMetadata },
   }
 
   entries.unshift({ name: 'boltbook.json', data: Buffer.from(JSON.stringify(json, null, 2), 'utf8') })

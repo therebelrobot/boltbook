@@ -154,7 +154,7 @@ From `gestures`: a gesture has two phases, and mixing them is the usual defect.
 | Swipe-to-delete + undo | fabric / pattern / photo rows | dismiss on distance **or** velocity; settles along the row's own axis; undo toast |
 | Drag-to-dismiss sheet | every editor sheet | **use Vaul** — do not hand-roll a drawer |
 | Pull-down to add | top of the Stash list | optional; must not fight `overscroll-behavior` |
-| Camera capture | fabric photo field | platform picker, not a custom UI |
+| Camera capture | fabric and notion photo fields | platform picker, not a custom UI |
 
 Rules: hit targets **≥ 44 × 44 px** (grow a small one with an invisible `::before` hitbox);
 `touch-action` set on the drag axis; **never a keyframe on a gesture surface**; no bounce on
@@ -167,9 +167,10 @@ threshold, so a vertical scroll is never stolen.
 
 ## 7. Components
 
-- **Adding a fabric is camera-first** — the primary action opens the camera, the photo leads the
-  form (it sits above the fields, not below them), and every field is skippable, because a photo
-  and a name is a valid bolt.
+- **Adding a fabric — and a notion — is camera-first** — the primary action opens the camera, the
+  photo leads the form (it sits above the fields, not below them), and every field is skippable,
+  because a photo and a name is a valid record. Thread, tools, patterns and projects take an
+  **optional** photo, with no camera-first step.
 - **The fabric row** — swatch/photo thumb · name · `fibre · width` · **remaining length** ·
   location. The remaining length is the number the whole app exists to answer.
 - **The yardage meter** — a thin bar: remaining against original, with the reserved slice
@@ -265,6 +266,7 @@ Resolved with the author, 2026-11-14:
 | A photo of the finished garment? | **Yes, and optional** | One optional photo when a project reaches `done`; never required, never blocking. |
 | Does a scanned storage label open a filter or a place? | **A place** | `#/location/<name>` lists every kind stored there; it answers "what is in this bin?" without first choosing a stash tab. |
 | Tiled print: server or client? | **Client** | pdf.js rasterises in the browser; no pattern leaves the box and no server renderer enters the dependency register. |
+| Photos: fabric only, or every record? (added 2026-11-16) | **Every record; fabric and notions camera-first** | A notion in the hand is easier to identify than a size string; thread, tools, patterns and projects take an optional photo. See `v2-plan.md` §3. |
 
 ---
 

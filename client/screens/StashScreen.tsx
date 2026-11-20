@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { api, uploadPhoto } from '../api'
+import { api, photoUrl, uploadPhoto } from '../api'
 import { useCollection } from '../useCollection'
 import { EntitySheet } from '../components/EntitySheet'
 import { PhotoField } from '../components/PhotoField'
@@ -11,7 +11,7 @@ import type { LengthUnit } from '../units'
 import { useUnit } from '../unitPreference'
 import { FABRIC_FIELDS, NOTION_FIELDS, THREAD_FIELDS, TOOL_FIELDS } from '../fields'
 import type { FieldSpec } from '../fields'
-import type { FabricPhoto, Tag } from '../../shared/model'
+import type { Photo, Tag } from '../../shared/model'
 
 type Record_ = Record<string, unknown>
 type Kind = 'fabric' | 'thread' | 'notion' | 'tool'
@@ -41,9 +41,12 @@ function TagLine({ item }: { item: Record_ }) {
   return <span className="meta tags">{tags.map((tag) => `#${tag}`).join(' ')}</span>
 }
 
-function RowThumb({ photo, fabricId, label }: { photo: FabricPhoto | undefined; fabricId: string; label: string }) {
+/** The row thumbnail: the record's first photo when it has one, its initials when not.
+ *  The URL comes from the photo's own entityType/entityId, so a row never builds a
+ *  URL from the tab it happens to be rendered under. */
+function RowThumb({ photo, label }: { photo: Photo | undefined; label: string }) {
   if (photo) {
-    return <img className="swatch" src={`/api/fabrics/${fabricId}/photos/${photo.id}`} alt="" width={44} height={44} />
+    return <img className="swatch" src={photoUrl(photo.entityType, photo.entityId, photo.id)} alt="" width={44} height={44} />
   }
   return (
     <span className="swatch" aria-hidden="true">
@@ -65,12 +68,14 @@ function Meter({ remaining, original }: { remaining: number | null; original: nu
 
 function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: LengthUnit; onOpen: () => void }) {
   const name = String(item.name ?? item.title ?? '')
+  const photos = (item.photos as Photo[] | undefined) ?? []
+  /** A thread's initials are its colour's, when there is one; every other kind shows its name's. */
+  const thumbFor = (fallback: string) => <RowThumb photo={photos[0]} label={fallback} />
 
   if (kind === 'fabric') {
-    const photos = (item.photos as FabricPhoto[] | undefined) ?? []
     return (
       <button type="button" className="row" onClick={onOpen}>
-        <RowThumb photo={photos[0]} fabricId={String(item.id)} label={name} />
+        {thumbFor(name)}
         <span className="body">
           <span className="title">{name}</span>
           <span className="meta">{joinMeta([text(item.fibre), text(item.weight), text(item.colour), text(item.location)]) || 'No details yet'}</span>
@@ -88,9 +93,7 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
   if (kind === 'thread') {
     return (
       <button type="button" className="row" onClick={onOpen}>
-        <span className="swatch" aria-hidden="true">
-          {text(item.colour)?.slice(0, 2) ?? 'th'}
-        </span>
+        {thumbFor(text(item.colour)?.slice(0, 2) ?? 'th')}
         <span className="body">
           <span className="title">{name}</span>
           <span className="meta">{joinMeta([text(item.brand), text(item.fibre), text(item.colour), text(item.location)]) || 'No details yet'}</span>
@@ -104,6 +107,7 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
   if (kind === 'notion') {
     return (
       <button type="button" className="row" onClick={onOpen}>
+        {thumbFor(name)}
         <span className="body">
           <span className="title">{name}</span>
           <span className="meta">{joinMeta([text(item.kind), text(item.colour), text(item.location), text(item.spec)]) || 'No details yet'}</span>
@@ -116,6 +120,7 @@ function Row({ kind, item, unit, onOpen }: { kind: Kind; item: Record_; unit: Le
 
   return (
     <button type="button" className="row" onClick={onOpen}>
+      {thumbFor(name)}
       <span className="body">
         <span className="title">{name}</span>
         <span className="meta">{joinMeta([text(item.category)?.replace('_', ' '), text(item.brand), text(item.spec), text(item.location)]) || 'No details yet'}</span>
@@ -170,25 +175,28 @@ export function StashScreen() {
     if (!file) return
     const target = photoTargetRef.current
     if (!target) {
-      // Creating: hold it until the fabric exists to attach it to.
+      // Creating: hold it until the record exists to attach it to.
       setPendingPhoto(file)
       return
     }
     setPhotoError(null)
     try {
       const prepared = await preparePhoto(file)
-      await uploadPhoto(target, prepared.blob, prepared.widthPx, prepared.heightPx)
+      await uploadPhoto(kind, target, prepared.blob, prepared.widthPx, prepared.heightPx)
       await reload()
     } catch (caught) {
       setPhotoError(caught instanceof Error ? caught.message : 'Could not add the photo.')
     }
   }
 
+  /** Fabric and notions are camera-first (design brief §7); the rest take a photo in the form. */
+  const cameraFirst = kind === 'fabric' || kind === 'notion'
+
   const openCreate = (withCamera: boolean): void => {
     setPendingPhoto(null)
     setPhotoError(null)
     setSheet({ mode: 'create' })
-    // Camera-first: the fabric form opens *with* the camera, from this same tap.
+    // Camera-first: the form opens *with* the camera, from this same tap.
     if (withCamera) requestPhoto(null)
   }
 
@@ -197,9 +205,9 @@ export function StashScreen() {
       await api(`${config.path}/${sheet.id}`, { method: 'PUT', body: values })
     } else {
       const created = await api<{ id: string }>(config.path, { method: 'POST', body: values })
-      if (kind === 'fabric' && pendingPhoto) {
+      if (pendingPhoto) {
         const prepared = await preparePhoto(pendingPhoto)
-        await uploadPhoto(created.id, prepared.blob, prepared.widthPx, prepared.heightPx)
+        await uploadPhoto(kind, created.id, prepared.blob, prepared.widthPx, prepared.heightPx)
       }
       setPendingPhoto(null)
     }
@@ -225,7 +233,7 @@ export function StashScreen() {
     }
   }
 
-  const photos = (record?.photos as FabricPhoto[] | undefined) ?? []
+  const photos = (record?.photos as Photo[] | undefined) ?? []
 
   return (
     <>
@@ -270,7 +278,7 @@ export function StashScreen() {
       ) : items.length === 0 ? (
         <div className="empty">
           <p>Nothing in the {config.label.toLowerCase()} yet.</p>
-          <button type="button" className="button primary" onClick={() => openCreate(kind === 'fabric')}>
+          <button type="button" className="button primary" onClick={() => openCreate(cameraFirst)}>
             Add the first one
           </button>
         </div>
@@ -283,7 +291,7 @@ export function StashScreen() {
       )}
 
       {items !== null && items.length > 0 && (
-        <button type="button" className="fab" onClick={() => openCreate(kind === 'fabric')}>
+        <button type="button" className="fab" onClick={() => openCreate(cameraFirst)}>
           Add {config.label.toLowerCase()}
         </button>
       )}
@@ -301,19 +309,18 @@ export function StashScreen() {
             setPendingPhoto(null)
           }}
           leading={
-            kind === 'fabric' ? (
-              <>
-                <PhotoField
-                  fabricId={sheet.mode === 'edit' ? sheet.id : null}
-                  photos={photos}
-                  pendingFile={pendingPhoto}
-                  onPendingFile={setPendingPhoto}
-                  onChanged={() => void reload()}
-                  onRequestPhoto={requestPhoto}
-                />
-                {photoError && <p className="error">{photoError}</p>}
-              </>
-            ) : undefined
+            <>
+              <PhotoField
+                entityType={kind}
+                entityId={sheet.mode === 'edit' ? sheet.id : null}
+                photos={photos}
+                pendingFile={pendingPhoto}
+                onPendingFile={setPendingPhoto}
+                onChanged={() => void reload()}
+                onRequestPhoto={requestPhoto}
+              />
+              {photoError && <p className="error">{photoError}</p>}
+            </>
           }
         />
       )}

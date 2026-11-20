@@ -88,7 +88,7 @@ export function LocationScreen({ name }: LocationScreenProps) {
                 {fabric.photos[0] ? (
                   <img
                     className="swatch"
-                    src={photoUrl(fabric.id, fabric.photos[0].id)}
+                    src={photoUrl(fabric.photos[0].entityType, fabric.photos[0].entityId, fabric.photos[0].id)}
                     alt=""
                     width={44}
                     height={44}
@@ -119,9 +119,19 @@ export function LocationScreen({ name }: LocationScreenProps) {
           <Section title="Thread" count={at.threads.length}>
             {at.threads.map((thread) => (
               <div className="row static" key={thread.id}>
-                <span className="swatch" aria-hidden="true">
-                  {thread.colour?.slice(0, 2) ?? 'th'}
-                </span>
+                {thread.photos[0] ? (
+                  <img
+                    className="swatch"
+                    src={photoUrl(thread.photos[0].entityType, thread.photos[0].entityId, thread.photos[0].id)}
+                    alt=""
+                    width={44}
+                    height={44}
+                  />
+                ) : (
+                  <span className="swatch" aria-hidden="true">
+                    {thread.colour?.slice(0, 2) ?? 'th'}
+                  </span>
+                )}
                 <span className="body">
                   <span className="title">{thread.name}</span>
                   <span className="meta">
@@ -136,6 +146,19 @@ export function LocationScreen({ name }: LocationScreenProps) {
           <Section title="Notions" count={at.notions.length}>
             {at.notions.map((notion) => (
               <div className="row static" key={notion.id}>
+                {notion.photos[0] ? (
+                  <img
+                    className="swatch"
+                    src={photoUrl(notion.photos[0].entityType, notion.photos[0].entityId, notion.photos[0].id)}
+                    alt=""
+                    width={44}
+                    height={44}
+                  />
+                ) : (
+                  <span className="swatch" aria-hidden="true">
+                    {notion.name.slice(0, 2)}
+                  </span>
+                )}
                 <span className="body">
                   <span className="title">{notion.name}</span>
                   <span className="meta">
@@ -150,6 +173,19 @@ export function LocationScreen({ name }: LocationScreenProps) {
           <Section title="Tools" count={at.tools.length}>
             {at.tools.map((tool) => (
               <div className="row static" key={tool.id}>
+                {tool.photos[0] ? (
+                  <img
+                    className="swatch"
+                    src={photoUrl(tool.photos[0].entityType, tool.photos[0].entityId, tool.photos[0].id)}
+                    alt=""
+                    width={44}
+                    height={44}
+                  />
+                ) : (
+                  <span className="swatch" aria-hidden="true">
+                    {tool.name.slice(0, 2)}
+                  </span>
+                )}
                 <span className="body">
                   <span className="title">{tool.name}</span>
                   <span className="meta">

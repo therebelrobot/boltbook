@@ -1,4 +1,4 @@
-import type { AuthStatus, FabricPhoto, LocationSummary, PatternFile } from '../shared/model'
+import type { AuthStatus, LocationSummary, PatternFile, Photo, TaggableType } from '../shared/model'
 
 export class ApiError extends Error {
   constructor(
@@ -47,18 +47,25 @@ export const claim = (setupToken: string, passphrase: string) =>
   api<{ ok: true }>('/api/setup', { method: 'POST', body: { setupToken, passphrase } })
 export const signOut = () => api<{ ok: true }>('/api/logout', { method: 'POST', body: {} })
 
-export async function uploadPhoto(fabricId: string, blob: Blob, widthPx: number, heightPx: number): Promise<FabricPhoto> {
-  const response = await fetch(`/api/fabrics/${fabricId}/photos?widthPx=${widthPx}&heightPx=${heightPx}`, {
+export async function uploadPhoto(
+  entityType: TaggableType,
+  entityId: string,
+  blob: Blob,
+  widthPx: number,
+  heightPx: number,
+): Promise<Photo> {
+  const response = await fetch(`/api/photos/${entityType}/${entityId}?widthPx=${widthPx}&heightPx=${heightPx}`, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'x-boltbook-request': '1', 'content-type': blob.type },
     body: blob,
   })
   if (!response.ok) throw await toApiError(response)
-  return (await response.json()) as FabricPhoto
+  return (await response.json()) as Photo
 }
 
-export const photoUrl = (fabricId: string, photoId: string): string => `/api/fabrics/${fabricId}/photos/${photoId}`
+export const photoUrl = (entityType: TaggableType, entityId: string, photoId: string): string =>
+  `/api/photos/${entityType}/${entityId}/${photoId}`
 
 /** Upload the owned PDF; page count is metadata the client read with pdf.js. */
 export async function uploadPatternFile(patternId: string, file: File, pageCount: number | null): Promise<PatternFile> {

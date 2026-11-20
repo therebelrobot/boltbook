@@ -60,7 +60,7 @@ fabric on the shelf and the patterns in the box, and answers the question a proj
 - **Tags** — one vocabulary shared by every record, filterable, and searchable.
 - **Thread** and **tools** as first-class records — thread with brand, colour code, fibre, spools
   and metres left; tools with a category and a needs-attention flag.
-- **Notions** — buttons, zippers, interfacing, elastic, trims.
+- **Notions** — the counted things: buttons, zippers, elastic, trims and pre-cut packs.
 - **Projects** — allocate fabric, thread and notions to a pattern view, and the **shortfall**
   readout names what is short (remaining minus what other live projects reserve) and what is too
   narrow, before you cut.
@@ -180,9 +180,12 @@ envelope OCR.** The backend, the client, and shipping are all real:
 
 174 tests, `tsc` clean, `npm audit` clean on Node 26 LTS.
 
-**Not yet:** the rest of v2 — shopping list, tag hygiene, project photos, costing, imports
-(Threadloop/Stash Hub and merge), and the remote-access recipe. See
-[`docs/v2-plan.md`](docs/v2-plan.md).
+**Not yet:** the rest of v2 — shopping list, tag hygiene, photos on every record, costing, imports
+(Threadloop/Stash Hub and merge), the remote-access recipe, the items added 2026-11-15 (a
+read-only detail screen, crop/rotate, cuts with their own price and wash lengths, colour swatches,
+white balance across a fabric's photos, URL import, and an optional off-by-default assisted-import
+path), and the items added 2026-11-16 — a **role** on fabric (lining, interfacing), a photo on
+every record, and search across notions and projects. See [`docs/v2-plan.md`](docs/v2-plan.md).
 
 ## Docs
 

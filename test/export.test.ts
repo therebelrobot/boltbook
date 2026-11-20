@@ -101,8 +101,10 @@ test('the export carries every table, the photos, and no credentials', async () 
   assert.equal(document.tables.tag!.length, 2)
   assert.equal(document.tables.tag_link!.length, 2)
   // Photo bytes live in photos/, and the metadata points at them.
-  const photos = document.tables.fabric_photo as Array<{ id: string; file: string }>
+  const photos = document.tables.photo as Array<{ id: string; entity_type: string; entity_id: string; file: string }>
   assert.equal(photos[0]!.file, `photos/${photo.id}.png`)
+  assert.equal(photos[0]!.entity_type, 'fabric')
+  assert.equal(photos[0]!.entity_id, fabric.id)
 
   // The export is data, never credentials.
   const raw = (readEntry(zip, 'boltbook.json') ?? Buffer.alloc(0)).toString('utf8')

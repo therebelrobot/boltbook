@@ -10,8 +10,12 @@ import { DatabaseSync } from 'node:sqlite'
  * 3 — thread, tool (+ FTS5).  4 — project and its allocations.
  * 5 — account and audit_log.  6 — fabric photos.  7 — tags.
  * 8 — pattern files (the owned PDF and its thumbnail).
+ * 9 — photos on every record: `fabric_photo` becomes `photo`, keyed by
+ *     entity type + id; the existing rows are copied byte-for-byte as
+ *     `entity_type = 'fabric'`.
  */
-const MIGRATIONS: string[] = [
+/** Exported for the migration tests: they build an older schema and step it forward. */
+export const MIGRATIONS: string[] = [
   `CREATE TABLE fabric (
      id                 TEXT PRIMARY KEY,
      name               TEXT NOT NULL,
@@ -306,6 +310,27 @@ const MIGRATIONS: string[] = [
       created_at             TEXT NOT NULL,
       updated_at             TEXT NOT NULL
     );`,
+
+   // Photos on every record. `entity_id` cannot carry a foreign key to six
+   // tables at once, so the repositories delete a record's photos explicitly —
+   // the cascade the old fabric_photo FK provided is now a deliberate step.
+   `CREATE TABLE photo (
+      id           TEXT PRIMARY KEY,
+      entity_type  TEXT NOT NULL,
+      entity_id    TEXT NOT NULL,
+      position     INTEGER NOT NULL,
+      content_type TEXT NOT NULL,
+      bytes        BLOB NOT NULL,
+      width_px     INTEGER,
+      height_px    INTEGER,
+      created_at   TEXT NOT NULL
+    );
+    CREATE INDEX photo_entity_idx ON photo(entity_type, entity_id, position);
+
+    INSERT INTO photo (id, entity_type, entity_id, position, content_type, bytes, width_px, height_px, created_at)
+      SELECT id, 'fabric', fabric_id, position, content_type, bytes, width_px, height_px, created_at
+        FROM fabric_photo;
+    DROP TABLE fabric_photo;`,
 ]
 
 export type Database = DatabaseSync
