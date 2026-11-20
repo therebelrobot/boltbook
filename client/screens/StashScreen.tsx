@@ -4,32 +4,20 @@ import { useCollection } from '../useCollection'
 import { EntitySheet } from '../components/EntitySheet'
 import { PhotoField } from '../components/PhotoField'
 import { useToast } from '../components/Toast'
+import { navigate, useRoute } from '../router'
 import { preparePhoto } from '../photo'
 import { formatQuantity, joinMeta, remainingFraction } from '../format'
 import { formatStored } from '../units'
 import type { LengthUnit } from '../units'
 import { useUnit } from '../unitPreference'
-import { FABRIC_FIELDS, NOTION_FIELDS, THREAD_FIELDS, TOOL_FIELDS } from '../fields'
-import type { FieldSpec } from '../fields'
+import { STASH_KINDS } from '../fields'
+import type { StashKindConfig } from '../fields'
 import type { Photo, Tag } from '../../shared/model'
 
 type Record_ = Record<string, unknown>
-type Kind = 'fabric' | 'thread' | 'notion' | 'tool'
+type Kind = StashKindConfig['key']
 
-interface KindConfig {
-  key: Kind
-  label: string
-  path: string
-  fields: readonly FieldSpec[]
-  singular: string
-}
-
-const KINDS: readonly KindConfig[] = [
-  { key: 'fabric', label: 'Fabric', path: '/api/fabrics', fields: FABRIC_FIELDS, singular: 'Fabric' },
-  { key: 'thread', label: 'Thread', path: '/api/threads', fields: THREAD_FIELDS, singular: 'Thread' },
-  { key: 'notion', label: 'Notions', path: '/api/notions', fields: NOTION_FIELDS, singular: 'Notion' },
-  { key: 'tool', label: 'Tools', path: '/api/tools', fields: TOOL_FIELDS, singular: 'Tool' },
-]
+const KINDS: readonly StashKindConfig[] = STASH_KINDS
 
 const text = (value: unknown): string | null => (value === null || value === undefined || value === '' ? null : String(value))
 const number = (value: unknown): number | null => (value === null || value === undefined || value === '' ? null : Number(value))
@@ -143,8 +131,13 @@ function storable(record: Record_): Record_ {
 }
 
 export function StashScreen() {
-  const [kind, setKind] = useState<Kind>('fabric')
-  const [tagFilter, setTagFilter] = useState<string | null>(null)
+  // Which kind and which tag filter are part of the address, so Back returns
+  // to the list exactly as it was left and a filtered list is linkable.
+  const route = useRoute()
+  const kind: Kind = KINDS.some((entry) => entry.key === route.id) ? (route.id as Kind) : 'fabric'
+  const tagFilter = route.rest[0] || null
+  const setKind = (next: Kind): void => navigate('stash', next, ...(tagFilter ? [tagFilter] : []))
+  const setTagFilter = (next: string | null): void => navigate('stash', kind, ...(next ? [next] : []))
   const config = KINDS.find((entry) => entry.key === kind) ?? KINDS[0]!
   const path = tagFilter ? `${config.path}?tag=${encodeURIComponent(tagFilter)}` : config.path
   const { items, error, reload } = useCollection<Record_>(path)
@@ -263,7 +256,10 @@ export function StashScreen() {
               type="button"
               key={tag.id}
               aria-pressed={tagFilter === tag.name}
-              onClick={() => setTagFilter(tagFilter === tag.name ? null : tag.name)}
+              onClick={() => {
+                setTagFilter(tagFilter === tag.name ? null : tag.name)
+                setSheet(null)
+              }}
             >
               {tag.name}
             </button>
@@ -285,7 +281,7 @@ export function StashScreen() {
       ) : (
         <div className="card">
           {items.map((item) => (
-            <Row key={String(item.id)} kind={kind} item={item} unit={unit} onOpen={() => setSheet({ mode: 'edit', id: String(item.id) })} />
+            <Row key={String(item.id)} kind={kind} item={item} unit={unit} onOpen={() => navigate(kind, String(item.id))} />
           ))}
         </div>
       )}
